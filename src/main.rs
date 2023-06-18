@@ -3,11 +3,7 @@ use serenity::{
     async_trait,
     client::{Client, Context},
     framework::StandardFramework,
-    model::{
-        application::interaction::Interaction,
-        gateway::Ready,
-        prelude::{command::CommandType, GuildId},
-    },
+    model::{application::interaction::Interaction, gateway::Ready, prelude::GuildId},
     prelude::{EventHandler, GatewayIntents},
 };
 // use serenity::prelude::*;
