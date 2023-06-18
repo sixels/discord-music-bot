@@ -30,6 +30,10 @@ impl EventHandler for Handler {
                     info!("handling join command");
                     commands::join(&ctx, &command).await;
                 }
+                "leave" => {
+                    info!("handling leave command");
+                    commands::leave(&ctx, &command).await;
+                }
                 cmd => {
                     error!("invalid command passed: {}", cmd)
                 }
@@ -42,12 +46,15 @@ impl EventHandler for Handler {
 
         let guild_id = GuildId(self.guild_id.parse().unwrap());
         let _ = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
-            commands.create_application_command(|command| {
-                command
-                    .name("join")
-                    .description("Join your current voice channel")
-                // .
-            })
+            commands
+                .create_application_command(|command| {
+                    command
+                        .name("join")
+                        .description("Join your current voice channel")
+                })
+                .create_application_command(|command| {
+                    command.name("leave").description("Leve the voice channel")
+                })
         })
         .await;
     }
