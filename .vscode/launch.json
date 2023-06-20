@@ -1,0 +1,50 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'metronome'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=metronome",
+                    "--package=metronome"
+                ],
+                "filter": {
+                    "name": "metronome",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--port", "7999",
+                "--provisioner-address", "http://0.0.0.0:23493",
+                "--storage-manager-type", "working-dir",
+                "--storage-manager-path", "/workspace/discord-music-bot",
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'metronome'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=metronome",
+                    "--package=metronome"
+                ],
+                "filter": {
+                    "name": "metronome",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
