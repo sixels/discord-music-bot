@@ -1,82 +1,27 @@
+mod join;
+mod leave;
+mod pause;
+mod play;
+
+use serenity::builder::CreateApplicationCommand;
 use serenity::client::Context;
 use serenity::model::prelude::interaction::application_command::ApplicationCommandInteraction;
 use serenity::model::prelude::interaction::InteractionResponseType;
-use tracing::{error, info};
+use tracing::error;
 
-/// Join your current voice channel
-pub async fn join(ctx: &Context, cmd: &ApplicationCommandInteraction) {
-    let guild = ctx.cache.guild(cmd.guild_id.unwrap()).unwrap();
-    let guild_id = guild.id;
+pub use self::{join::Join, leave::Leave, play::Play};
 
-    let channel_id = guild
-        .voice_states
-        .get(&cmd.user.id)
-        .and_then(|voice_state| voice_state.channel_id);
+#[serenity::async_trait]
+pub trait Command {
+    fn name() -> String;
+    fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand;
 
-    // ctx.
-    let connect_to = match channel_id {
-        Some(channel) => channel,
-        None => {
-            // check_msg(cmd.reply(ctx, "Not in a voice channel").await);
-            error!("not in a voice channel");
-            respond(
-                ctx,
-                cmd,
-                "Você deve entrar em um canal de voz antes de usar o comando",
-            )
-            .await;
-            return;
-            // return Ok(());
-        }
-    };
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-    let channel_name = connect_to.name(&ctx.cache).await;
-    info!(channel_id = connect_to.0, ?channel_name, "joining channel");
-
-    let (_handler, result) = manager.join(guild_id, connect_to).await;
-    if let Err(cause) = result {
-        error!(%cause, "failed to join channel");
-        respond(
-            ctx,
-            cmd,
-            "Não consegui entrar no canal, tente novamente mais tarde",
-        )
-        .await;
-        return;
-    }
-
-    let channel_name_str = if let Some(name) = channel_name.as_deref() {
-        name
-    } else {
-        "?"
-    };
-    respond(ctx, cmd, &format!("Entrou em {channel_name_str}")).await;
+    #[allow(unused_variables)]
+    async fn run(ctx: &Context, cmd: &ApplicationCommandInteraction) {}
 }
 
-pub async fn leave(ctx: &Context, cmd: &ApplicationCommandInteraction) {
-    let guild = ctx.cache.guild(cmd.guild_id.unwrap()).unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-    if manager.get(guild_id).is_some() {
-        if let Err(cause) = manager.remove(guild_id).await {
-            error!(%cause, "failed to leave channel");
-            respond(ctx, cmd, "Não consegui sair do canal").await;
-        } else {
-            respond(ctx, cmd, "Saiu do canal").await;
-        }
-    } else {
-        respond(ctx, cmd, "Não estou em nenhum canal").await;
-    }
+pub fn register_command<C: Command>(commands: &mut serenity::builder::CreateApplicationCommands) {
+    commands.create_application_command(C::register);
 }
 
 async fn respond(ctx: &Context, cmd: &ApplicationCommandInteraction, message: &str) {

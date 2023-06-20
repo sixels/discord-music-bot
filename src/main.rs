@@ -6,10 +6,11 @@ use serenity::{
     model::{application::interaction::Interaction, gateway::Ready, prelude::GuildId},
     prelude::{EventHandler, GatewayIntents},
 };
-// use serenity::prelude::*;
 use shuttle_secrets::SecretStore;
 use songbird::SerenityInit;
 use tracing::{error, info};
+
+use crate::commands::Command;
 
 mod commands;
 
@@ -24,11 +25,15 @@ impl EventHandler for Handler {
             match command.data.name.as_str() {
                 "join" => {
                     info!("handling join command");
-                    commands::join(&ctx, &command).await;
+                    commands::Join::run(&ctx, &command).await;
                 }
                 "leave" => {
                     info!("handling leave command");
-                    commands::leave(&ctx, &command).await;
+                    commands::Leave::run(&ctx, &command).await;
+                }
+                "play" => {
+                    info!("handling play command");
+                    commands::Play::run(&ctx, &command).await;
                 }
                 cmd => {
                     error!("invalid command passed: {}", cmd)
@@ -41,18 +46,36 @@ impl EventHandler for Handler {
         info!("{} is connected!", ready.user.name);
 
         let guild_id = GuildId(self.guild_id.parse().unwrap());
-        let _ = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
-            commands
-                .create_application_command(|command| {
-                    command
-                        .name("join")
-                        .description("Join your current voice channel")
-                })
-                .create_application_command(|command| {
-                    command.name("leave").description("Leve the voice channel")
-                })
-        })
-        .await;
+
+        if let Ok(cmds) = guild_id.get_application_commands(&ctx.http).await {
+            info!("deleting old commands");
+            for cmd in cmds {
+                guild_id
+                    .delete_application_command(&ctx.http, cmd.id)
+                    .await
+                    .ok();
+            }
+        }
+
+        if let Err(cause) = guild_id
+            .set_application_commands(
+                &ctx.http,
+                |commands: &mut serenity::builder::CreateApplicationCommands| {
+                    commands::register_command::<commands::Join>(commands);
+                    commands::register_command::<commands::Leave>(commands);
+                    commands::register_command::<commands::Play>(commands);
+
+                    commands.create_application_command(|command| {
+                        command
+                            .name("pause")
+                            .description("Pause the current playing music")
+                    })
+                },
+            )
+            .await
+        {
+            panic!("could not register commands: {cause}")
+        }
     }
 }
 
@@ -60,6 +83,13 @@ impl EventHandler for Handler {
 async fn serenity(
     #[shuttle_secrets::Secrets] secret_store: SecretStore,
 ) -> shuttle_serenity::ShuttleSerenity {
+    {
+        let args = std::env::args();
+        let env: std::env::Vars = std::env::vars();
+        let env = env.collect::<Vec<_>>();
+        info!(?args, ?env, "starting program");
+    };
+
     // Get the discord token set in `Secrets.toml`
     let token = if let Some(token) = secret_store.get("DISCORD_TOKEN") {
         token
