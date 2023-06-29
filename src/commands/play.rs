@@ -1,13 +1,13 @@
 use serenity::{
+    all::{CommandInteraction, CommandOptionType},
     async_trait,
-    builder::CreateApplicationCommand,
+    builder::{CreateCommand, CreateCommandOption},
     client::Context,
-    model::prelude::{
-        command::CommandOptionType,
-        interaction::application_command::{ApplicationCommandInteraction, CommandDataOptionValue},
-    },
 };
+use songbird::input::YoutubeDl;
 use tracing::{error, info};
+
+use crate::HttpKey;
 
 use super::respond;
 
@@ -20,27 +20,24 @@ impl super::Command for Play {
         String::from("play")
     }
 
-    fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-        command
-            .name(Self::name())
+    fn register() -> CreateCommand {
+        CreateCommand::new(Self::name())
             .description("Play a song from the given URL")
-            .create_option(|option| {
-                option
-                    .name("url")
-                    .description("A URL from a youtube video")
-                    .kind(CommandOptionType::String)
-                    .required(true)
-            })
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "query",
+                    "A URL from a youtube video",
+                )
+                .required(true),
+            )
     }
 
-    async fn run(ctx: &Context, cmd: &ApplicationCommandInteraction) {
+    async fn run(ctx: &Context, cmd: &CommandInteraction) {
         if let Some(option) = cmd.data.options.get(0) {
-            if let CommandDataOptionValue::String(url) =
-                option.resolved.as_ref().expect("Invalid option")
-            {
+            if let Some(url) = option.value.as_str() {
                 info!(url, "preparing to play song");
-                let guild = ctx.cache.guild(cmd.guild_id.unwrap()).unwrap();
-                let guild_id = guild.id;
+                let guild_id = ctx.cache.guild(cmd.guild_id.unwrap()).unwrap().id;
 
                 let manager = songbird::get(ctx)
                     .await
@@ -52,7 +49,10 @@ impl super::Command for Play {
                     None => {
                         // manager.join(guild_id, connect_to)
 
-                        let channel_id = guild
+                        let channel_id = ctx
+                            .cache
+                            .guild(cmd.guild_id.unwrap())
+                            .unwrap()
                             .voice_states
                             .get(&cmd.user.id)
                             .and_then(|voice_state| voice_state.channel_id);
@@ -72,23 +72,25 @@ impl super::Command for Play {
                                 return;
                             }
                         };
-                        let (h, _) = manager.join(guild_id, connect_to).await;
-                        h
+                        manager
+                            .join(guild_id, connect_to)
+                            .await
+                            .expect("could not join channel")
                     }
                 };
 
                 let mut handler = handler_lock.lock().await;
 
-                let source = match songbird::ytdl(&url).await {
-                    Ok(source) => source,
-                    Err(cause) => {
-                        error!(%cause, "failed to create the source");
-                        respond(ctx, cmd, "Não consegui tocar essa").await;
-                        return;
-                    }
+                let http = {
+                    let data = ctx.data.read().await;
+                    data.get::<HttpKey>()
+                        .cloned()
+                        .expect("Guaranteed to exist in the typemap.")
                 };
 
-                handler.play_only_source(source);
+                let source = YoutubeDl::new(http, url.to_string());
+
+                handler.play_only_input(source.into());
                 respond(ctx, cmd, &format!("Tocando {url}")).await;
             } else {
                 respond(ctx, cmd, "URL invalida").await;

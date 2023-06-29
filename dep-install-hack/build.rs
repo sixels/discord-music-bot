@@ -9,6 +9,7 @@ fn main() {
             .arg("-y")
             .arg("libopus-dev")
             .arg("ffmpeg")
+            .arg("python3-pip")
             .status()
             .expect("failed to run apt")
             .success()

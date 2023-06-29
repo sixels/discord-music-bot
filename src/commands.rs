@@ -3,10 +3,9 @@ mod leave;
 mod pause;
 mod play;
 
-use serenity::builder::CreateApplicationCommand;
+use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::client::Context;
-use serenity::model::prelude::interaction::application_command::ApplicationCommandInteraction;
-use serenity::model::prelude::interaction::InteractionResponseType;
+use serenity::{all::CommandInteraction, builder::CreateCommand};
 use tracing::error;
 
 pub use self::{join::Join, leave::Leave, play::Play};
@@ -14,23 +13,20 @@ pub use self::{join::Join, leave::Leave, play::Play};
 #[serenity::async_trait]
 pub trait Command {
     fn name() -> String;
-    fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand;
+    fn register() -> CreateCommand;
 
     #[allow(unused_variables)]
-    async fn run(ctx: &Context, cmd: &ApplicationCommandInteraction) {}
+    async fn run(ctx: &Context, cmd: &CommandInteraction) {}
 }
 
-pub fn register_command<C: Command>(commands: &mut serenity::builder::CreateApplicationCommands) {
-    commands.create_application_command(C::register);
-}
-
-async fn respond(ctx: &Context, cmd: &ApplicationCommandInteraction, message: &str) {
+async fn respond(ctx: &Context, cmd: &CommandInteraction, message: &str) {
     if let Err(cause) = cmd
-        .create_interaction_response(&ctx.http, |response| {
-            response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
-                .interaction_response_data(|msg| msg.content(message))
-        })
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new().content(message),
+            ),
+        )
         .await
     {
         error!(%cause, "failed to respond to slash command");

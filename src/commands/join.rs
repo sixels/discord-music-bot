@@ -1,7 +1,4 @@
-use serenity::{
-    async_trait, builder::CreateApplicationCommand, client::Context,
-    model::prelude::interaction::application_command::ApplicationCommandInteraction,
-};
+use serenity::{all::CommandInteraction, async_trait, builder::CreateCommand, client::Context};
 use tracing::{error, info};
 
 use super::respond;
@@ -15,20 +12,21 @@ impl super::Command for Join {
         String::from("join")
     }
 
-    fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-        command
-            .name(Self::name())
-            .description("Join your current voice channel")
+    fn register() -> CreateCommand {
+        CreateCommand::new(Self::name()).description("Join your current voice channel")
     }
 
-    async fn run(ctx: &Context, cmd: &ApplicationCommandInteraction) {
-        let guild = ctx.cache.guild(cmd.guild_id.unwrap()).unwrap();
-        let guild_id = guild.id;
+    async fn run(ctx: &Context, cmd: &CommandInteraction) {
+        let (guild_id, channel_id) = {
+            let guild = ctx.cache.guild(cmd.guild_id.unwrap()).unwrap();
 
-        let channel_id = guild
-            .voice_states
-            .get(&cmd.user.id)
-            .and_then(|voice_state| voice_state.channel_id);
+            let channel_id = guild
+                .voice_states
+                .get(&cmd.user.id)
+                .and_then(|voice_state| voice_state.channel_id);
+
+            (guild.id, channel_id)
+        };
 
         let connect_to = match channel_id {
             Some(channel) => channel,
@@ -42,7 +40,6 @@ impl super::Command for Join {
                 )
                 .await;
                 return;
-                // return Ok(());
             }
         };
 
@@ -51,11 +48,13 @@ impl super::Command for Join {
             .expect("Songbird Voice client placed in at initialisation.")
             .clone();
 
-        let channel_name = connect_to.name(&ctx.cache).await;
+        let channel_name = connect_to
+            .name(&ctx.http)
+            .await
+            .unwrap_or(String::from("?"));
         info!(channel_id = connect_to.0, ?channel_name, "joining channel");
 
-        let (_handler, result) = manager.join(guild_id, connect_to).await;
-        if let Err(cause) = result {
+        if let Err(cause) = manager.join(guild_id, connect_to).await {
             error!(%cause, "failed to join channel");
             respond(
                 ctx,
@@ -66,11 +65,6 @@ impl super::Command for Join {
             return;
         }
 
-        let channel_name_str = if let Some(name) = channel_name.as_deref() {
-            name
-        } else {
-            "?"
-        };
-        respond(ctx, cmd, &format!("Entrou em {channel_name_str}")).await;
+        respond(ctx, cmd, &format!("Entrou em {channel_name}")).await;
     }
 }

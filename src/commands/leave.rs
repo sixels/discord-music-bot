@@ -1,7 +1,4 @@
-use serenity::{
-    async_trait, builder::CreateApplicationCommand, client::Context,
-    model::prelude::interaction::application_command::ApplicationCommandInteraction,
-};
+use serenity::{all::CommandInteraction, async_trait, builder::CreateCommand, client::Context};
 use tracing::error;
 
 use super::respond;
@@ -15,15 +12,12 @@ impl super::Command for Leave {
         String::from("leave")
     }
 
-    fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-        command
-            .name(Self::name())
-            .description("Leave the voice channel")
+    fn register() -> CreateCommand {
+        CreateCommand::new(Self::name()).description("Leave the voice channel")
     }
 
-    async fn run(ctx: &Context, cmd: &ApplicationCommandInteraction) {
-        let guild = ctx.cache.guild(cmd.guild_id.unwrap()).unwrap();
-        let guild_id = guild.id;
+    async fn run(ctx: &Context, cmd: &CommandInteraction) {
+        let guild_id = ctx.cache.guild(cmd.guild_id.unwrap()).unwrap().id;
 
         let manager = songbird::get(ctx)
             .await
