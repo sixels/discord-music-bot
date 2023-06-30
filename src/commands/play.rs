@@ -4,10 +4,10 @@ use serenity::{
     builder::{CreateCommand, CreateCommandOption},
     client::Context,
 };
-use songbird::input::YoutubeDl;
+use songbird::{input::YoutubeDl, Event};
 use tracing::{error, info};
 
-use crate::HttpKey;
+use crate::{events::track::PlayingSongNotifier, HttpKey};
 
 use super::respond;
 
@@ -90,8 +90,18 @@ impl super::Command for Play {
 
                 let source = YoutubeDl::new(http, url.to_string());
 
-                handler.play_only_input(source.into());
-                respond(ctx, cmd, &format!("Tocando {url}")).await;
+                let song = handler.enqueue_input(source.into()).await;
+                song.add_event(
+                    Event::Track(songbird::TrackEvent::Play),
+                    PlayingSongNotifier {
+                        channel_id: cmd.channel_id,
+                        http: ctx.http.clone(),
+                        title: url.to_string(),
+                    },
+                )
+                .ok();
+
+                respond(ctx, cmd, &format!("Adicionado: `{url}`")).await;
             } else {
                 respond(ctx, cmd, "URL invalida").await;
             }

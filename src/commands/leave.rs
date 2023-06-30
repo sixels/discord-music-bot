@@ -29,7 +29,7 @@ impl super::Command for Leave {
                 error!(%cause, "failed to leave channel");
                 respond(ctx, cmd, "Não consegui sair do canal").await;
             } else {
-                respond(ctx, cmd, "Saiu do canal").await;
+                respond(ctx, cmd, "Saindo do canal").await;
             }
         } else {
             respond(ctx, cmd, "Não estou em nenhum canal").await;

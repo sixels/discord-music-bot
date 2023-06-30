@@ -63,7 +63,7 @@ impl super::Command for Join {
             )
             .await;
             return;
-        }
+        };
 
         respond(ctx, cmd, &format!("Entrou em {channel_name}")).await;
     }

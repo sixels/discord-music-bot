@@ -15,6 +15,7 @@ use tracing::{error, info};
 use crate::commands::Command;
 
 mod commands;
+mod events;
 
 struct Handler {
     guild_id: String,
