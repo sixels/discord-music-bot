@@ -1,46 +1,41 @@
 use anyhow::anyhow;
+use commands::{Join, Leave, Play};
 use reqwest::Client as HttpClient;
 use serenity::{
     all::Interaction,
     async_trait,
-    client::{Client, Context},
-    framework::StandardFramework,
+    builder::CreateCommand,
+    client::Context,
     model::{gateway::Ready, prelude::GuildId},
-    prelude::{EventHandler, GatewayIntents, TypeMapKey},
+    prelude::{EventHandler, TypeMapKey},
 };
+use service::{CreateService, Service};
 use shuttle_secrets::SecretStore;
-use songbird::SerenityInit;
 use tracing::{error, info};
 
 use crate::commands::Command;
 
 mod commands;
 mod events;
+mod service;
 
 struct Handler {
     guild_id: String,
+    commands: Vec<Box<dyn Command + Send + Sync + 'static>>,
 }
 
 #[async_trait]
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::Command(command) = interaction {
-            match command.data.name.as_str() {
-                "join" => {
-                    info!("handling join command");
-                    commands::Join::run(&ctx, &command).await;
-                }
-                "leave" => {
-                    info!("handling leave command");
-                    commands::Leave::run(&ctx, &command).await;
-                }
-                "play" => {
-                    info!("handling play command");
-                    commands::Play::run(&ctx, &command).await;
-                }
-                cmd => {
-                    error!("invalid command passed: {}", cmd)
-                }
+        if let Interaction::Command(cmd) = interaction {
+            let command_name = cmd.data.name.as_str();
+            let command = self.commands.iter().find(|c| c.name() == command_name);
+
+            if let Some(command) = command {
+                info!("handling {} command", command.name());
+                command.run(&ctx, &cmd).await;
+            } else {
+                error!("invalid command passed: {}", command_name)
             }
         }
     }
@@ -60,15 +55,14 @@ impl EventHandler for Handler {
         if let Err(cause) = guild_id
             .set_commands(
                 &ctx.http,
-                vec![
-                    commands::Join::register(),
-                    commands::Leave::register(),
-                    commands::Play::register(),
-                ],
+                self.commands
+                    .iter()
+                    .map(|c| c.register(CreateCommand::new(c.name())))
+                    .collect(),
             )
             .await
         {
-            panic!("could not register commands: {cause}")
+            panic!("failed to register commands: {cause}")
         }
     }
 }
@@ -109,31 +103,11 @@ async fn serenity(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shut
         return Err(anyhow!("'{guild_id_var}' was not found").into());
     };
 
-    // Set gateway intents, which decides what events the bot will be notified about
-    let intents = GatewayIntents::non_privileged();
-    let framework = StandardFramework::new();
-
-    let handler = Handler { guild_id };
-    let client = Client::builder(&token, intents)
-        .event_handler(handler)
-        .framework(framework)
-        .register_songbird()
-        .type_map_insert::<HttpKey>(HttpClient::new())
-        .await
-        .expect("Err creating client");
-
-    Ok(Service(client))
-}
-
-struct Service(serenity::Client);
-
-#[async_trait]
-impl shuttle_runtime::Service for Service {
-    async fn bind(mut self, _addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        self.0
-            .start()
-            .await
-            .map_err(shuttle_runtime::CustomError::new)?;
-        Ok(())
-    }
+    let service = CreateService::new(token, guild_id)
+        .with_command(Join)
+        .with_command(Leave)
+        .with_command(Play)
+        .create()
+        .await;
+    Ok(service)
 }

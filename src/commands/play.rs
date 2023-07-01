@@ -4,25 +4,29 @@ use serenity::{
     builder::{CreateCommand, CreateCommandOption},
     client::Context,
 };
-use songbird::{input::YoutubeDl, Event};
-use tracing::{error, info};
+use songbird::{
+    input::{Compose, YoutubeDl},
+    Event,
+};
+use tracing::info;
 
-use crate::{events::track::PlayingSongNotifier, HttpKey};
-
-use super::respond;
+use crate::{
+    commands::{common, join::join_channel},
+    events::track::PlayingSongNotifier,
+    HttpKey,
+};
 
 /// Play a song from the given URL
 pub struct Play;
 
 #[async_trait]
 impl super::Command for Play {
-    fn name() -> String {
+    fn name(&self) -> String {
         String::from("play")
     }
 
-    fn register() -> CreateCommand {
-        CreateCommand::new(Self::name())
-            .description("Play a song from the given URL")
+    fn register(&self, cmd: CreateCommand) -> CreateCommand {
+        cmd.description("Play a song from the given URL")
             .add_option(
                 CreateCommandOption::new(
                     CommandOptionType::String,
@@ -33,80 +37,68 @@ impl super::Command for Play {
             )
     }
 
-    async fn run(ctx: &Context, cmd: &CommandInteraction) {
-        if let Some(option) = cmd.data.options.get(0) {
-            if let Some(url) = option.value.as_str() {
-                info!(url, "preparing to play song");
-                let guild_id = ctx.cache.guild(cmd.guild_id.unwrap()).unwrap().id;
+    async fn run(&self, ctx: &Context, cmd: &CommandInteraction) {
+        let url_option = cmd
+            .data
+            .options
+            .first()
+            .and_then(|option| option.value.as_str());
 
-                let manager = songbird::get(ctx)
-                    .await
-                    .expect("Songbird Voice client placed in at initialisation.")
-                    .clone();
-
-                let handler_lock = match manager.get(guild_id) {
-                    Some(handler) => handler,
-                    None => {
-                        // manager.join(guild_id, connect_to)
-
-                        let channel_id = ctx
-                            .cache
-                            .guild(cmd.guild_id.unwrap())
-                            .unwrap()
-                            .voice_states
-                            .get(&cmd.user.id)
-                            .and_then(|voice_state| voice_state.channel_id);
-
-                        // ctx.
-                        let connect_to = match channel_id {
-                            Some(channel) => channel,
-                            None => {
-                                // check_msg(cmd.reply(ctx, "Not in a voice channel").await);
-                                error!("not in a voice channel");
-                                respond(
-                                    ctx,
-                                    cmd,
-                                    "Você deve entrar em um canal de voz antes de usar o comando",
-                                )
-                                .await;
-                                return;
-                            }
-                        };
-                        manager
-                            .join(guild_id, connect_to)
-                            .await
-                            .expect("could not join channel")
-                    }
-                };
-
-                let mut handler = handler_lock.lock().await;
-
-                let http = {
-                    let data = ctx.data.read().await;
-                    data.get::<HttpKey>()
-                        .cloned()
-                        .expect("Guaranteed to exist in the typemap.")
-                };
-
-                let source = YoutubeDl::new(http, url.to_string());
-
-                let song = handler.enqueue_input(source.into()).await;
-                song.add_event(
-                    Event::Track(songbird::TrackEvent::Play),
-                    PlayingSongNotifier {
-                        channel_id: cmd.channel_id,
-                        http: ctx.http.clone(),
-                        title: url.to_string(),
-                    },
-                )
-                .ok();
-
-                respond(ctx, cmd, &format!("Adicionado: `{url}`")).await;
-            } else {
-                respond(ctx, cmd, "URL invalida").await;
+        let url = match url_option {
+            Some(url) => url,
+            None => {
+                common::respond(ctx, cmd, "Você precisa passar uma URL válida para tocar").await;
+                return;
             }
+        };
+        info!(url, "preparing to play song");
+
+        let guild_id = common::get_guild_id(ctx, cmd);
+
+        let manager = songbird::get(ctx)
+            .await
+            .expect("Songbird Voice client placed in at initialisation.");
+
+        let handler_lock = match manager.get(guild_id) {
+            Some(handler) => handler,
+            None => match join_channel(manager, ctx, cmd).await {
+                Ok((handler, _)) => handler,
+                Err(e) => {
+                    common::respond(ctx, cmd, &e).await;
+                    return;
+                }
+            },
+        };
+        let mut handler = handler_lock.lock().await;
+
+        let http = {
+            let data = ctx.data.read().await;
+            data.get::<HttpKey>()
+                .cloned()
+                .expect("Guaranteed to exist in the typemap.")
+        };
+
+        let mut source = YoutubeDl::new(http, url.to_string());
+        let meta = source.aux_metadata().await.ok();
+
+        let title;
+        if let Some(metadata) = meta {
+            title = metadata.title.unwrap_or(String::new());
         } else {
-            respond(ctx, cmd, "Você precisa passar uma URL para tocar").await;
+            title = url.to_string()
         }
+
+        let song = handler.enqueue_input(source.into()).await;
+        song.add_event(
+            Event::Track(songbird::TrackEvent::Play),
+            PlayingSongNotifier {
+                channel_id: cmd.channel_id,
+                http: ctx.http.clone(),
+                title: title.clone(),
+            },
+        )
+        .ok();
+
+        common::respond(ctx, cmd, &format!("Adicionado: `{title}`")).await;
     }
 }
