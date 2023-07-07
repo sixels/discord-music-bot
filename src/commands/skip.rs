@@ -41,7 +41,6 @@ impl super::Command for Skip {
                 .required(false)
                 .set_autocomplete(true),
             )
-            // todo
             .add_option(
                 CreateCommandOption::new(
                     CommandOptionType::SubCommand,
@@ -60,7 +59,6 @@ impl super::Command for Skip {
                 .required(false)
                 .set_autocomplete(true),
             )
-            // todo
             .add_option(
                 CreateCommandOption::new(
                     CommandOptionType::SubCommand,
