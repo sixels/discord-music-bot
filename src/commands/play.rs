@@ -12,7 +12,7 @@ use songbird::{
     input::{Compose, YoutubeDl},
     Event,
 };
-use tracing::info;
+use tracing::{error, info};
 
 use crate::{
     commands::{common, join::join_channel},
@@ -92,11 +92,11 @@ impl super::Command for Play {
                 .expect("Guaranteed to exist in the typemap.")
         };
 
-        cmd.defer_ephemeral(&ctx.http).await.ok();
-
         let mut source = match query {
             QueryKind::Url(url) => YoutubeDl::new(http, url.to_string()),
             QueryKind::Search(input) => {
+                cmd.defer_ephemeral(&ctx.http).await.ok();
+
                 let yt = YtDl::new();
                 info!("querying search results");
                 let Ok(search_result) = yt.search(input).await else {
@@ -131,7 +131,7 @@ impl super::Command for Play {
 
                 info!("creating follow up message");
                 let Ok(message) = cmd.create_followup(&ctx.http, followup).await else {
-                    common::respond(ctx, cmd, "Deu ruim :(").await;
+                    common::respond(ctx, cmd, "Deu ruim :sob:").await;
                     return
                 };
 
@@ -139,36 +139,53 @@ impl super::Command for Play {
                     return
                 };
 
-                let video_id = response.data.custom_id;
+                let video_id = &response.data.custom_id;
+                let video_url = format!("https://www.youtube.com/watch?v={video_id}");
                 info!("user selected {}", video_id);
 
-                let video_url = format!("https://www.youtube.com/watch?v={video_id}");
-                cmd.delete_followup(&ctx.http, message.id).await.ok();
+                if let Err(cause) = cmd.delete_followup(&ctx.http, message.id).await {
+                    error!(%cause, "failed to delete follow up")
+                }
 
                 YoutubeDl::new(http, video_url)
             }
         };
 
         let meta = source.aux_metadata().await.ok();
-        let title = if let Some(metadata) = meta {
-            metadata.title.unwrap_or(String::new())
+        let (title, thumbnail) = if let Some(metadata) = meta {
+            (metadata.title.unwrap_or(String::new()), metadata.thumbnail)
         } else {
-            String::from(query)
+            (String::from(query), None)
         };
 
+        cmd.create_followup(
+            &ctx.http,
+            CreateInteractionResponseFollowup::new().content(format!(
+                "**{}** adicionou ||{title}|| à fila",
+                &cmd.user.name
+            )),
+        )
+        .await
+        .ok();
+
         let song = handler.enqueue_input(source.into()).await;
-        song.add_event(
+        if let Err(cause) = song.add_event(
             Event::Track(songbird::TrackEvent::Play),
             PlayingSongNotifier {
                 channel_id: cmd.channel_id,
                 http: ctx.http.clone(),
                 context: ctx.clone(),
                 title: title.clone(),
+                username: cmd
+                    .user
+                    .global_name
+                    .clone()
+                    .unwrap_or(cmd.user.name.clone()),
+                thumbnail,
             },
-        )
-        .ok();
-
-        common::respond(ctx, cmd, &format!("Adicionado: `{title}`")).await;
+        ) {
+            error!(%cause, "failed to create song event")
+        }
     }
 }
 

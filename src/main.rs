@@ -5,6 +5,7 @@ use serenity::{
     async_trait,
     builder::CreateCommand,
     client::Context,
+    gateway::ActivityData,
     model::{gateway::Ready, prelude::GuildId},
     prelude::EventHandler,
 };
@@ -41,6 +42,9 @@ impl EventHandler for Handler {
 
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+
+        let activity = ActivityData::competing("rinha de galo");
+        ctx.set_activity(Some(activity));
 
         let guild_id = GuildId(self.guild_id.parse().unwrap());
 

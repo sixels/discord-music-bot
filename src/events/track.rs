@@ -21,7 +21,10 @@ pub struct PlayingSongNotifier {
     pub channel_id: ChannelId,
     pub http: Arc<Http>,
     pub context: Context,
+
     pub title: String,
+    pub username: String,
+    pub thumbnail: Option<String>,
 }
 
 #[async_trait]
@@ -33,21 +36,24 @@ impl EventHandler for PlayingSongNotifier {
                 track_list.len()
             );
 
+            let mut embed = CreateEmbed::new()
+                .color(Colour::BLUE)
+                .field("TOCANDO AGORA", self.title.clone(), true)
+                .field("", format!("requisitado por **{}**", self.username), false);
+
+            if let Some(thumb) = self.thumbnail.clone() {
+                embed = embed.thumbnail(thumb);
+            }
+
             match self
                 .channel_id
                 .send_message(
                     &self.http,
-                    CreateMessage::new()
-                        .add_embed(CreateEmbed::new().color(Colour::BLUE).field(
-                            "Tocando",
-                            self.title.clone(),
-                            true,
-                        ))
-                        .reactions([
-                            PREV_SONG_REACTION.clone(),
-                            PLAYPAUSE_SONG_REACTION.clone(),
-                            NEXT_SONG_REACTION.clone(),
-                        ]),
+                    CreateMessage::new().add_embed(embed), // .reactions([
+                                                           //     PREV_SONG_REACTION.clone(),
+                                                           //     PLAYPAUSE_SONG_REACTION.clone(),
+                                                           //     NEXT_SONG_REACTION.clone(),
+                                                           // ]),
                 )
                 .await
             {

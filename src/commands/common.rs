@@ -1,5 +1,8 @@
 use serenity::{
-    all::{ChannelId, CommandInteraction, GuildId, ResolvedOption, ResolvedValue},
+    all::{
+        ChannelId, CommandInteraction, ComponentInteraction, GuildId, ResolvedOption, ResolvedValue,
+    },
+    async_trait,
     builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
     client::Context,
 };
@@ -40,16 +43,61 @@ pub fn get_option<'r, 'o>(
         .map(|opt| &opt.value)
 }
 
-pub async fn respond(ctx: &Context, cmd: &CommandInteraction, message: impl Into<String>) {
-    if let Err(cause) = cmd
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().content(message),
-            ),
-        )
-        .await
-    {
-        error!(%cause, "failed to respond to slash command");
+#[async_trait]
+pub trait CanRespond {
+    async fn respond_to(&self, ctx: &Context, message: String);
+}
+
+#[async_trait]
+impl CanRespond for CommandInteraction {
+    async fn respond_to(&self, ctx: &Context, message: String) {
+        if let Err(cause) = self
+            .create_response(
+                &ctx.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().content(message),
+                ),
+            )
+            .await
+        {
+            error!(%cause, "failed to respond to slash command");
+        }
     }
+}
+#[async_trait]
+impl CanRespond for &CommandInteraction {
+    async fn respond_to(&self, ctx: &Context, message: String) {
+        if let Err(cause) = self
+            .create_response(
+                &ctx.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().content(message),
+                ),
+            )
+            .await
+        {
+            error!(%cause, "failed to respond to slash command");
+        }
+    }
+}
+
+#[async_trait]
+impl CanRespond for ComponentInteraction {
+    async fn respond_to(&self, ctx: &Context, message: String) {
+        if let Err(cause) = self
+            .create_response(
+                &ctx.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().content(message),
+                ),
+            )
+            .await
+        {
+            error!(%cause, "failed to respond to slash command");
+        }
+    }
+}
+
+pub async fn respond<R: CanRespond>(ctx: &Context, r: &R, message: impl Into<String>) {
+    r.respond_to(ctx, message.into()).await;
 }
