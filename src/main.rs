@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use commands::{Join, Leave, Pause, Play, Skip};
+use commands::{Join, Leave, List, Pause, Play, Skip};
 use serenity::{
     all::Interaction,
     async_trait,
@@ -48,12 +48,12 @@ impl EventHandler for Handler {
 
         let guild_id = GuildId(self.guild_id.parse().unwrap());
 
-        if let Ok(cmds) = guild_id.get_commands(&ctx.http).await {
-            info!("deleting old commands");
-            for cmd in cmds {
-                guild_id.delete_command(&ctx.http, cmd.id).await.ok();
-            }
-        }
+        // if let Ok(cmds) = guild_id.get_commands(&ctx.http).await {
+        //     info!("deleting old commands");
+        //     for cmd in cmds {
+        //         guild_id.delete_command(&ctx.http, cmd.id).await.ok();
+        //     }
+        // }
 
         if let Err(cause) = guild_id
             .set_commands(
@@ -106,6 +106,7 @@ async fn serenity(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shut
         .with_command(Play)
         .with_command(Pause)
         .with_command(Skip)
+        .with_command(List)
         .create()
         .await;
     Ok(service)

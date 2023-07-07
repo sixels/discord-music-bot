@@ -1,12 +1,15 @@
+use std::time::Duration;
+
 use serenity::{
     all::{CommandInteraction, CommandOptionType, ResolvedValue},
     async_trait,
     builder::{
         CreateButton, CreateCommand, CreateCommandOption, CreateEmbed,
-        CreateInteractionResponseFollowup,
+        CreateInteractionResponseFollowup, CreateMessage,
     },
     client::Context,
     model::Colour,
+    prelude::TypeMapKey,
 };
 use songbird::{
     input::{Compose, YoutubeDl},
@@ -152,40 +155,62 @@ impl super::Command for Play {
         };
 
         let meta = source.aux_metadata().await.ok();
-        let (title, thumbnail) = if let Some(metadata) = meta {
-            (metadata.title.unwrap_or(String::new()), metadata.thumbnail)
+
+        let requester = cmd
+            .user
+            .global_name
+            .clone()
+            .unwrap_or(cmd.user.name.clone());
+
+        let song_meta = if let Some(metadata) = meta {
+            SongMetadata {
+                title: metadata.title.unwrap_or(String::new()),
+                duration: metadata.duration.unwrap_or(Duration::ZERO),
+                thumbnail: metadata.thumbnail,
+                user: requester,
+            }
         } else {
-            (String::from(query), None)
+            SongMetadata {
+                title: String::from(query),
+                thumbnail: None,
+                duration: Duration::ZERO,
+                user: requester,
+            }
         };
 
-        cmd.create_followup(
-            &ctx.http,
-            CreateInteractionResponseFollowup::new().content(format!(
-                "**{}** adicionou ||{title}|| à fila",
-                &cmd.user.name
-            )),
-        )
-        .await
-        .ok();
+        cmd.channel_id
+            .send_message(
+                &ctx.http,
+                CreateMessage::new().content(format!(
+                    "**{}** adicionou ||{}|| à fila",
+                    cmd.user.name, song_meta.title,
+                )),
+            )
+            .await
+            .ok();
 
         let song = handler.enqueue_input(source.into()).await;
+
         if let Err(cause) = song.add_event(
             Event::Track(songbird::TrackEvent::Play),
             PlayingSongNotifier {
                 channel_id: cmd.channel_id,
                 http: ctx.http.clone(),
                 context: ctx.clone(),
-                title: title.clone(),
+                title: song_meta.title.clone(),
                 username: cmd
                     .user
                     .global_name
                     .clone()
                     .unwrap_or(cmd.user.name.clone()),
-                thumbnail,
+                thumbnail: song_meta.thumbnail.clone(),
             },
         ) {
             error!(%cause, "failed to create song event")
         }
+
+        let mut typemap = song.typemap().write().await;
+        typemap.insert::<SongMetadataKey>(song_meta)
     }
 }
 
@@ -202,6 +227,19 @@ impl<'s> From<QueryKind<'s>> for String {
             QueryKind::Search(s) => String::from(s),
         }
     }
+}
+
+pub struct SongMetadataKey;
+
+pub struct SongMetadata {
+    pub title: String,
+    pub duration: Duration,
+    pub user: String,
+    pub thumbnail: Option<String>,
+}
+
+impl TypeMapKey for SongMetadataKey {
+    type Value = SongMetadata;
 }
 
 mod ytdl {

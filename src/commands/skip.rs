@@ -208,7 +208,7 @@ async fn skip(
         }
 
         // play the next music if the one that was playing got removed
-        if removed_playing {
+        if !q.is_empty() && removed_playing {
             if let Some(track) = q.get_mut(0) {
                 track.play().ok();
             }
