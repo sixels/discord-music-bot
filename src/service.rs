@@ -1,11 +1,13 @@
 use reqwest::Client as HttpClient;
 use serenity::{
-    async_trait, framework::StandardFramework, prelude::GatewayIntents, Client as SerenityClient,
+    async_trait,
+    framework::StandardFramework,
+    prelude::{GatewayIntents, TypeMapKey},
+    Client as SerenityClient,
 };
 use songbird::SerenityInit;
 
-use crate::{commands::Command, Handler, HttpKey};
-
+use crate::{commands::Command, Handler};
 pub struct Service {
     serenity: SerenityClient,
 }
@@ -59,4 +61,10 @@ impl shuttle_runtime::Service for Service {
             .map_err(shuttle_runtime::CustomError::new)?;
         Ok(())
     }
+}
+
+pub struct HttpKey;
+
+impl TypeMapKey for HttpKey {
+    type Value = HttpClient;
 }

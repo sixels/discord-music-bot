@@ -3,11 +3,12 @@ mod join;
 mod leave;
 mod pause;
 mod play;
+mod skip;
 
 use serenity::client::Context;
 use serenity::{all::CommandInteraction, builder::CreateCommand};
 
-pub use self::{join::Join, leave::Leave, play::Play};
+pub use self::{join::Join, leave::Leave, pause::Pause, play::Play, skip::Skip};
 
 #[serenity::async_trait]
 pub trait Command {

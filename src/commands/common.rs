@@ -1,5 +1,5 @@
 use serenity::{
-    all::{ChannelId, CommandInteraction, GuildId},
+    all::{ChannelId, CommandInteraction, GuildId, ResolvedOption, ResolvedValue},
     builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
     client::Context,
 };
@@ -31,7 +31,16 @@ pub fn get_guild_and_channel(
     (guild.id, channel_id)
 }
 
-pub async fn respond(ctx: &Context, cmd: &CommandInteraction, message: &str) {
+pub fn get_option<'r, 'o>(
+    opts: &'r [ResolvedOption<'o>],
+    name: &'_ str,
+) -> Option<&'r ResolvedValue<'o>> {
+    opts.iter()
+        .find(|option| option.name == name)
+        .map(|opt| &opt.value)
+}
+
+pub async fn respond(ctx: &Context, cmd: &CommandInteraction, message: impl Into<String>) {
     if let Err(cause) = cmd
         .create_response(
             &ctx.http,

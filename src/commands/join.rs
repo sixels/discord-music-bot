@@ -17,7 +17,7 @@ impl super::Command for Join {
         String::from("join")
     }
     fn register(&self, cmd: CreateCommand) -> CreateCommand {
-        cmd.description("Join your current voice channel")
+        cmd.description("Entra no canal de voz que você está")
     }
 
     async fn run(&self, ctx: &Context, cmd: &CommandInteraction) {
@@ -52,7 +52,9 @@ pub async fn join_channel(
         None => {
             // check_msg(cmd.reply(ctx, "Not in a voice channel").await);
             error!("not in a voice channel");
-            return Err("Você deve entrar em um canal de voz antes de usar o comando".to_string());
+            return Err(
+                "Você deve entrar em um canal de voz antes de usar esse comando".to_string(),
+            );
         }
     };
 

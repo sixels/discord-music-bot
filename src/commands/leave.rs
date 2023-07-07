@@ -12,7 +12,7 @@ impl super::Command for Leave {
         String::from("leave")
     }
     fn register(&self, cmd: CreateCommand) -> CreateCommand {
-        cmd.description("Leave the voice channel")
+        cmd.description("Sai do canal de voz")
     }
 
     async fn run(&self, ctx: &Context, cmd: &CommandInteraction) {

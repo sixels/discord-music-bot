@@ -1,13 +1,12 @@
 use anyhow::anyhow;
-use commands::{Join, Leave, Play};
-use reqwest::Client as HttpClient;
+use commands::{Join, Leave, Pause, Play, Skip};
 use serenity::{
     all::Interaction,
     async_trait,
     builder::CreateCommand,
     client::Context,
     model::{gateway::Ready, prelude::GuildId},
-    prelude::{EventHandler, TypeMapKey},
+    prelude::EventHandler,
 };
 use service::{CreateService, Service};
 use shuttle_secrets::SecretStore;
@@ -67,12 +66,6 @@ impl EventHandler for Handler {
     }
 }
 
-struct HttpKey;
-
-impl TypeMapKey for HttpKey {
-    type Value = HttpClient;
-}
-
 type ShuttleResult<T> = Result<T, shuttle_runtime::Error>;
 
 #[shuttle_runtime::main]
@@ -107,6 +100,8 @@ async fn serenity(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shut
         .with_command(Join)
         .with_command(Leave)
         .with_command(Play)
+        .with_command(Pause)
+        .with_command(Skip)
         .create()
         .await;
     Ok(service)
