@@ -117,7 +117,12 @@ impl super::Command for Play {
                             ytdl::Metadata {
                                 title, duration, ..
                             },
-                        )| { format!("{}. {title} ({duration})", i + 1) },
+                        )| {
+                            let fmt_duration = duration
+                                .map(|time| humantime::format_duration(time).to_string())
+                                .unwrap_or(String::from("< 1m"));
+                            format!("{}. {title} ({fmt_duration})", i + 1)
+                        },
                     )
                     .collect::<Vec<String>>();
 
@@ -243,7 +248,7 @@ impl TypeMapKey for SongMetadataKey {
 }
 
 mod ytdl {
-    use std::io::ErrorKind;
+    use std::{io::ErrorKind, time::Duration};
 
     use songbird::input::AudioStreamError;
     use tokio::process::Command;
@@ -266,11 +271,9 @@ mod ytdl {
                 "-f",
                 "ba[abr>0][vcodec=none]/best",
                 "--no-playlist",
-                "--get-title",
-                "--get-id",
-                "--get-duration",
-                "-o",
-                "%(duration>%H:%M:%S)s",
+                "--print",
+                "title,id,duration",
+                "--flat-playlist",
             ];
 
             let out = Command::new(self.program)
@@ -291,18 +294,15 @@ mod ytdl {
             let results: Vec<Metadata> = lines
                 .chunks_exact(3)
                 .map(|meta| {
-                    let duration = String::from(meta[2]);
-
-                    let format_duration = duration
-                        .split(':')
-                        .enumerate()
-                        .map(|(i, time)| if time != "00" || i == 2 { time } else { "" })
-                        .collect::<Vec<&str>>();
+                    let duration: Option<Duration> = String::from(meta[2])
+                        .parse::<f64>()
+                        .ok()
+                        .map(Duration::from_secs_f64);
 
                     Metadata {
                         title: String::from(meta[0]),
                         id: String::from(meta[1]),
-                        duration: format_duration.join(":"),
+                        duration,
                     }
                 })
                 .collect();
@@ -313,6 +313,6 @@ mod ytdl {
     pub struct Metadata {
         pub title: String,
         pub id: String,
-        pub duration: String,
+        pub duration: Option<Duration>,
     }
 }
