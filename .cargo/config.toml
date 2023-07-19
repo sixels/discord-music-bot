@@ -1,3 +1,4 @@
 [alias]
 runs = "shuttle run"
 deploysd = "shuttle deploy --allow-dirty"
+deploys = "shuttle deploy"

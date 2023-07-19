@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use commands::{Join, Leave, List, Pause, Play, Skip};
 use serenity::{
-    all::Interaction,
+    all::{ActivityType, Interaction},
     async_trait,
     builder::CreateCommand,
     client::Context,
@@ -21,7 +23,7 @@ mod service;
 
 struct Handler {
     guild_id: String,
-    commands: Vec<Box<dyn Command + Send + Sync + 'static>>,
+    commands: Vec<Arc<dyn Command + Send + Sync + 'static>>,
 }
 
 #[async_trait]
@@ -29,11 +31,18 @@ impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(cmd) = interaction {
             let command_name = cmd.data.name.as_str();
-            let command = self.commands.iter().find(|c| c.name() == command_name);
+            let command = self
+                .commands
+                .iter()
+                .find(|c| c.name() == command_name)
+                .cloned();
+            // let command = command.cloned();
 
             if let Some(command) = command {
+                // tokio::spawn(async move {
                 info!("handling {} command", command.name());
-                command.run(&ctx, &cmd).await;
+                command.run(ctx, cmd).await;
+                // });
             } else {
                 error!("invalid command passed: {}", command_name)
             }
@@ -43,7 +52,11 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        let activity = ActivityData::competing("rinha de galo");
+        let activity = ActivityData {
+            kind: ActivityType::Custom,
+            name: String::from("Amassando o jotas"),
+            url: None,
+        };
         ctx.set_activity(Some(activity));
 
         let guild_id = GuildId(self.guild_id.parse().unwrap());
@@ -109,5 +122,7 @@ async fn serenity(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shut
         .with_command(List)
         .create()
         .await;
+    info!("Service created");
+
     Ok(service)
 }

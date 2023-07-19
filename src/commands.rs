@@ -17,5 +17,5 @@ pub trait Command {
     fn register(&self, cmd: CreateCommand) -> CreateCommand;
 
     #[allow(unused_variables)]
-    async fn run(&self, ctx: &Context, cmd: &CommandInteraction) {}
+    async fn run(&self, ctx: Context, cmd: CommandInteraction) {}
 }

@@ -15,23 +15,23 @@ impl super::Command for Leave {
         cmd.description("Sai do canal de voz")
     }
 
-    async fn run(&self, ctx: &Context, cmd: &CommandInteraction) {
-        let guild_id = common::get_guild_id(ctx, cmd);
-        let manager = songbird::get(ctx)
+    async fn run(&self, ctx: Context, cmd: CommandInteraction) {
+        let guild_id = common::get_guild_id(&ctx, &cmd);
+        let manager = songbird::get(&ctx)
             .await
             .expect("Songbird Voice client placed in at initialisation.")
             .clone();
 
         if manager.get(guild_id).is_none() {
-            common::respond(ctx, cmd, "Não estou em nenhum canal").await;
+            common::respond(&ctx, &cmd, "Não estou em nenhum canal").await;
             return;
         }
 
         if let Err(cause) = manager.remove(guild_id).await {
             error!(%cause, "failed to leave channel");
-            common::respond(ctx, cmd, "Não consegui sair do canal").await;
+            common::respond(&ctx, &cmd, "Não consegui sair do canal").await;
         } else {
-            common::respond(ctx, cmd, "Saindo do canal").await;
+            common::respond(&ctx, &cmd, "Saindo do canal").await;
         }
     }
 }

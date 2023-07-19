@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use reqwest::Client as HttpClient;
 use serenity::{
     async_trait,
@@ -6,6 +8,7 @@ use serenity::{
     Client as SerenityClient,
 };
 use songbird::SerenityInit;
+use tracing::info;
 
 use crate::{commands::Command, Handler};
 pub struct Service {
@@ -15,7 +18,7 @@ pub struct Service {
 pub struct CreateService {
     token: String,
     guild_id: String,
-    commands: Vec<Box<dyn Command + Sync + Send + 'static>>,
+    commands: Vec<Arc<dyn Command + Sync + Send + 'static>>,
 }
 
 impl CreateService {
@@ -28,7 +31,7 @@ impl CreateService {
     }
 
     pub fn with_command<C: Command + Sync + Send + 'static>(mut self, cmd: C) -> Self {
-        self.commands.push(Box::new(cmd));
+        self.commands.push(Arc::new(cmd));
         self
     }
 
@@ -55,10 +58,15 @@ impl CreateService {
 #[async_trait]
 impl shuttle_runtime::Service for Service {
     async fn bind(mut self, _addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        self.serenity
+        let result = self
+            .serenity
             .start()
             .await
-            .map_err(shuttle_runtime::CustomError::new)?;
+            .map_err(shuttle_runtime::CustomError::new);
+        info!(?result);
+
+        let _ = result?;
+
         Ok(())
     }
 }

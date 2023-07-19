@@ -40,7 +40,7 @@ impl super::Command for List {
             )
     }
 
-    async fn run(&self, ctx: &Context, cmd: &CommandInteraction) {
+    async fn run(&self, ctx: Context, cmd: CommandInteraction) {
         let options = cmd.data.options();
         let option_page = common::get_option(&options, "page")
             .and_then(|val| {
@@ -52,8 +52,8 @@ impl super::Command for List {
             })
             .unwrap_or(1);
 
-        let guild_id = common::get_guild_id(ctx, cmd);
-        let manager = songbird::get(ctx)
+        let guild_id = common::get_guild_id(&ctx, &cmd);
+        let manager = songbird::get(&ctx)
             .await
             .expect("Songbird Voice client placed in at initialisation.");
 
@@ -75,7 +75,7 @@ impl super::Command for List {
                     .await
                     .ok();
             }
-            Err(err) => common::respond(ctx, cmd, err).await,
+            Err(err) => common::respond(&ctx, &cmd, err).await,
         }
     }
 }

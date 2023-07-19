@@ -43,20 +43,20 @@ impl super::Command for Pause {
             )
     }
 
-    async fn run(&self, ctx: &Context, cmd: &CommandInteraction) {
+    async fn run(&self, ctx: Context, cmd: CommandInteraction) {
         let options = cmd.data.options();
         let unpause = common::get_option(&options, "off")
             .map(|_| true)
             .unwrap_or(false);
 
-        let guild_id = common::get_guild_id(ctx, cmd);
-        let manager = songbird::get(ctx)
+        let guild_id = common::get_guild_id(&ctx, &cmd);
+        let manager = songbird::get(&ctx)
             .await
             .expect("Songbird Voice client placed in at initialisation.");
 
         match pause(manager, guild_id, unpause).await {
-            Ok(message) => common::respond(ctx, cmd, message),
-            Err(err) => common::respond(ctx, cmd, err),
+            Ok(message) => common::respond(&ctx, &cmd, message),
+            Err(err) => common::respond(&ctx, &cmd, err),
         }
         .await;
     }

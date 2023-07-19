@@ -20,12 +20,12 @@ impl super::Command for Join {
         cmd.description("Entra no canal de voz que você está")
     }
 
-    async fn run(&self, ctx: &Context, cmd: &CommandInteraction) {
-        let manager = songbird::get(ctx)
+    async fn run(&self, ctx: Context, cmd: CommandInteraction) {
+        let manager = songbird::get(&ctx)
             .await
             .expect("Songbird Voice client placed in at initialisation.");
 
-        match join_channel(manager, ctx, cmd).await {
+        match join_channel(manager, &ctx, &cmd).await {
             Ok((_, channel_id)) => {
                 let channel_name = channel_id
                     .name(&ctx.http)
@@ -34,7 +34,7 @@ impl super::Command for Join {
                 info!(channel_id = channel_id.0, ?channel_name, "joining channel");
             }
             Err(e) => {
-                common::respond(ctx, cmd, &e).await;
+                common::respond(&ctx, &cmd, &e).await;
             }
         }
     }

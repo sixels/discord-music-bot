@@ -46,7 +46,7 @@ impl super::Command for Play {
             )
     }
 
-    async fn run(&self, ctx: &Context, cmd: &CommandInteraction) {
+    async fn run(&self, ctx: Context, cmd: CommandInteraction) {
         let options = cmd.data.options();
         let option_query = common::get_option(&options, "query").and_then(|opt| {
             if let ResolvedValue::String(val) = opt {
@@ -64,29 +64,13 @@ impl super::Command for Play {
         let query = match option_query {
             Some(url) => url,
             None => {
-                common::respond(ctx, cmd, "Você precisa passar uma URL válida para tocar").await;
+                common::respond(&ctx, &cmd, "Você precisa passar uma URL válida para tocar").await;
                 return;
             }
         };
         info!(?query, "preparing to play song");
 
-        let guild_id = common::get_guild_id(ctx, cmd);
-
-        let manager = songbird::get(ctx)
-            .await
-            .expect("Songbird Voice client placed in at initialisation.");
-
-        let handler_lock = match manager.get(guild_id) {
-            Some(handler) => handler,
-            None => match join_channel(manager, ctx, cmd).await {
-                Ok((handler, _)) => handler,
-                Err(e) => {
-                    common::respond(ctx, cmd, &e).await;
-                    return;
-                }
-            },
-        };
-        let mut handler = handler_lock.lock().await;
+        let guild_id = common::get_guild_id(&ctx, &cmd);
 
         let http = {
             let data = ctx.data.read().await;
@@ -103,7 +87,7 @@ impl super::Command for Play {
                 let yt = YtDl::new();
                 info!("querying search results");
                 let Ok(search_result) = yt.search(input).await else {
-                    common::respond(ctx, cmd, "Não consegui pesquisar nenhuma música").await;
+                    common::respond(&ctx, &cmd, "Não consegui pesquisar nenhuma música").await;
                     return
                 };
                 info!("found {} results", search_result.len());
@@ -139,11 +123,11 @@ impl super::Command for Play {
 
                 info!("creating follow up message");
                 let Ok(message) = cmd.create_followup(&ctx.http, followup).await else {
-                    common::respond(ctx, cmd, "Deu ruim :sob:").await;
+                    common::respond(&ctx, &cmd, "Deu ruim :sob:").await;
                     return
                 };
 
-                let Some(response) = message.await_component_interaction(ctx).await else {
+                let Some(response) = message.await_component_interaction(&ctx).await else {
                     return
                 };
 
@@ -193,6 +177,22 @@ impl super::Command for Play {
             )
             .await
             .ok();
+
+        let manager = songbird::get(&ctx)
+            .await
+            .expect("Songbird Voice client placed in at initialisation.");
+
+        let handler_lock = match manager.get(guild_id) {
+            Some(handler) => handler,
+            None => match join_channel(manager, &ctx, &cmd).await {
+                Ok((handler, _)) => handler,
+                Err(e) => {
+                    common::respond(&ctx, &cmd, &e).await;
+                    return;
+                }
+            },
+        };
+        let mut handler = handler_lock.lock().await;
 
         let song = handler.enqueue_input(source.into()).await;
 
