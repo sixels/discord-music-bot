@@ -52,11 +52,7 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        let activity = ActivityData {
-            kind: ActivityType::Custom,
-            name: String::from("Amassando o jotas"),
-            url: None,
-        };
+        let activity = ActivityData::playing("Bola");
         ctx.set_activity(Some(activity));
 
         let guild_id = GuildId(self.guild_id.parse().unwrap());
