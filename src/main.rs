@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use commands::{Join, Leave, List, Pause, Play, Skip};
 use serenity::{
-    all::{ActivityType, Interaction},
+    all::Interaction,
     async_trait,
     builder::CreateCommand,
     client::Context,
