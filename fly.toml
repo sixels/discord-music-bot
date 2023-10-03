@@ -1,0 +1,6 @@
+app = "eh-o-tocas"
+primary_region = "gru"
+
+[build]
+dockerfile = "Dockerfile"
+ignorefile = ".dockerignore"

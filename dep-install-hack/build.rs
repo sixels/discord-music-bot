@@ -9,7 +9,7 @@ fn main() {
             .arg("-y")
             .arg("libopus-dev")
             .arg("ffmpeg")
-            .arg("python3-pip")
+            .arg("pipx")
             .status()
             .expect("failed to run apt")
             .success()
@@ -17,14 +17,16 @@ fn main() {
             panic!("failed to install dependencies")
         }
 
-        if !std::process::Command::new("python3")
-            .arg("-m")
-            .arg("pip")
+        std::process::Command::new("pipx")
+            .arg("ensurepath")
+            .status()
+            .expect("failed to run pipx");
+
+        if !std::process::Command::new("pipx")
             .arg("install")
-            .arg("-U")
             .arg("yt-dlp")
             .status()
-            .expect("failed to run python3")
+            .expect("failed to run pipx")
             .success()
         {
             panic!("failed to install yt-dlp")
