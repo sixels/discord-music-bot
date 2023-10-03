@@ -13,13 +13,6 @@ type ShuttleResult<T> = Result<T, shuttle_runtime::Error>;
 
 #[shuttle_runtime::main]
 async fn serenity(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> ShuttleResult<Service> {
-    {
-        let args = std::env::args();
-        let env: std::env::Vars = std::env::vars();
-        let env = env.collect::<Vec<_>>();
-        info!(?args, ?env, "starting program");
-    };
-
     // Get the discord token set in `Secrets.toml`
     let token = if let Some(token) = secret_store.get("DISCORD_TOKEN") {
         token
