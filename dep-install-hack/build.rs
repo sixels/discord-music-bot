@@ -17,12 +17,8 @@ fn main() {
             panic!("failed to install dependencies")
         }
 
-        std::process::Command::new("pipx")
-            .arg("ensurepath")
-            .status()
-            .expect("failed to run pipx");
-
         if !std::process::Command::new("pipx")
+            .env("PIPX_BIN_DIR", "/bin")
             .arg("install")
             .arg("yt-dlp")
             .status()
