@@ -1,7 +1,8 @@
 use std::time::Duration;
 
+use serde::Deserialize;
 use serenity::{
-    all::{CommandInteraction, CommandOptionType, ResolvedValue},
+    all::{CommandInteraction, CommandOptionType, ResolvedValue, UserId},
     async_trait,
     builder::{
         CreateButton, CreateCommand, CreateCommandOption, CreateEmbed,
@@ -23,7 +24,18 @@ use crate::{
     service::HttpKey,
 };
 
-use self::ytdl::YtDl;
+const PIPED_URL: &str = "https://pipedapi.kavin.rocks";
+
+#[derive(Debug, Deserialize)]
+pub struct SearchResults {
+    items: Vec<SearchResult>,
+}
+#[derive(Debug, Deserialize)]
+pub struct SearchResult {
+    url: String,
+    duration: u64,
+    title: String,
+}
 
 /// Play a song from the given URL
 pub struct Play;
@@ -84,30 +96,40 @@ impl super::Command for Play {
             QueryKind::Search(input) => {
                 cmd.defer_ephemeral(&ctx.http).await.ok();
 
-                let yt = YtDl::new();
                 info!("querying search results");
-                let Ok(search_result) = yt.search(input).await else {
+                let Ok(res) = http
+                    .get(format!("{}/search", PIPED_URL))
+                    .query(&[
+                        ("q", input),
+                        ("filter", "videos"),
+                        ("filter", "music_songs"),
+                        ("filter", "music_videos"),
+                    ])
+                    .send()
+                    .await
+                else {
                     common::respond(&ctx, &cmd, "Não consegui pesquisar nenhuma música").await;
-                    return
+                    return;
                 };
-                info!("found {} results", search_result.len());
+                // let bytes = res.bytes();
 
-                let display_result = search_result
+                let Ok(results) = res.json::<SearchResults>().await else {
+                    common::respond(&ctx, &cmd, "deu ruim em alguma coisa, tenta de novo").await;
+                    return;
+                };
+
+                info!("found {} results", results.items.len());
+
+                let display_result = results
+                    .items
                     .iter()
                     .enumerate()
-                    .map(
-                        |(
-                            i,
-                            ytdl::Metadata {
-                                title, duration, ..
-                            },
-                        )| {
-                            let fmt_duration = duration
-                                .map(|time| humantime::format_duration(time).to_string())
-                                .unwrap_or(String::from("< 1m"));
-                            format!("{}. {title} ({fmt_duration})", i + 1)
-                        },
-                    )
+                    .map(|(i, result)| {
+                        let fmt_duration =
+                            humantime::format_duration(Duration::from_secs(result.duration))
+                                .to_string();
+                        format!("{}. {} ({})", i + 1, result.title, fmt_duration)
+                    })
                     .collect::<Vec<String>>();
 
                 let mut followup = CreateInteractionResponseFollowup::new().add_embed(
@@ -116,30 +138,31 @@ impl super::Command for Play {
                         .colour(Colour::RED),
                 );
 
-                for (i, result) in search_result.iter().enumerate() {
+                for (i, result) in results.items.iter().enumerate() {
                     followup = followup
-                        .button(CreateButton::new(result.id.clone()).label((i + 1).to_string()))
+                        .button(CreateButton::new(result.url.clone()).label((i + 1).to_string()))
                 }
 
                 info!("creating follow up message");
                 let Ok(message) = cmd.create_followup(&ctx.http, followup).await else {
                     common::respond(&ctx, &cmd, "Deu ruim :sob:").await;
-                    return
+                    return;
                 };
 
                 let Some(response) = message.await_component_interaction(&ctx).await else {
-                    return
+                    return;
                 };
 
-                let video_id = &response.data.custom_id;
-                let video_url = format!("https://www.youtube.com/watch?v={video_id}");
-                info!("user selected {}", video_id);
+                let video_url = &response.data.custom_id;
+                info!("user selected {}", video_url);
+
+                let video_uri = format!("https://www.youtube.com/{video_url}");
 
                 if let Err(cause) = cmd.delete_followup(&ctx.http, message.id).await {
                     error!(%cause, "failed to delete follow up")
                 }
 
-                YoutubeDl::new(http, video_url)
+                YoutubeDl::new(http, video_uri)
             }
         };
 

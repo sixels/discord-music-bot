@@ -524,6 +524,8 @@ dependencies = [
  "lazy_static",
  "regex",
  "reqwest",
+ "serde",
+ "serde_json",
  "serenity",
  "shuttle-runtime",
  "shuttle-secrets",
