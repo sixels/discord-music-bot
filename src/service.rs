@@ -8,7 +8,6 @@ use serenity::{
     Client as SerenityClient,
 };
 use songbird::SerenityInit;
-use tracing::info;
 
 use crate::{commands::Command, events::handler::Handler};
 
@@ -56,14 +55,11 @@ impl CreateService {
 #[async_trait]
 impl shuttle_runtime::Service for Service {
     async fn bind(mut self, _addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        let result = self
-            .serenity
+        self.serenity
             .start()
             .await
-            .map_err(shuttle_runtime::CustomError::new);
-        info!(?result);
-
-        let _ = result?;
+            .map_err(shuttle_runtime::CustomError::new)
+            .expect("failed to start the bot");
 
         Ok(())
     }
