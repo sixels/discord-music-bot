@@ -11,5 +11,5 @@ publish = false
 
 
 [dependencies]
-shuttle-runtime = "0.28.0"
+shuttle-runtime = "0.34.0"
 tokio = "1"
