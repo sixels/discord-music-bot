@@ -8,6 +8,7 @@ use tracing::info;
 mod commands;
 mod events;
 mod service;
+mod tools;
 
 type ShuttleResult<T> = Result<T, shuttle_runtime::Error>;
 
@@ -20,19 +21,7 @@ async fn serenity(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shut
         return Err(anyhow!("'DISCORD_TOKEN' was not found").into());
     };
 
-    let guild_id_var = if cfg!(debug_assertions) {
-        "GUILD_ID"
-    } else {
-        "GUILD_ID_PROD"
-    };
-
-    let guild_id = if let Some(token) = secret_store.get(guild_id_var) {
-        token
-    } else {
-        return Err(anyhow!("'{guild_id_var}' was not found").into());
-    };
-
-    let service = CreateService::new(token, guild_id)
+    let service = CreateService::new(token)
         .with_command(Join)
         .with_command(Leave)
         .with_command(Play)

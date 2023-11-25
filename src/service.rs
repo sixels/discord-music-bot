@@ -12,22 +12,19 @@ use tracing::info;
 
 use crate::{commands::Command, events::handler::Handler};
 
-
 pub struct Service {
     serenity: SerenityClient,
 }
 
 pub struct CreateService {
     token: String,
-    guild_id: String,
     commands: Vec<Arc<dyn Command + Sync + Send + 'static>>,
 }
 
 impl CreateService {
-    pub fn new(token: String, guild_id: String) -> Self {
+    pub fn new(token: String) -> Self {
         Self {
             token,
-            guild_id,
             commands: Vec::new(),
         }
     }
@@ -42,7 +39,6 @@ impl CreateService {
         let intents = GatewayIntents::non_privileged();
 
         let handler = Handler {
-            guild_id: self.guild_id,
             commands: self.commands,
         };
         let client = SerenityClient::builder(&self.token, intents)

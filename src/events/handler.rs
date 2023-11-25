@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serenity::{
-    all::{GuildId, Interaction, Ready},
+    all::{Guild, GuildId, Interaction, Ready},
     async_trait,
     builder::CreateCommand,
     gateway::ActivityData,
@@ -12,7 +12,6 @@ use tracing::{error, info};
 use crate::commands::Command;
 
 pub struct Handler {
-    pub guild_id: String,
     pub commands: Vec<Arc<dyn Command + Send + Sync + 'static>>,
 }
 
@@ -30,11 +29,11 @@ impl EventHandler for Handler {
 
             if let Some(command) = command {
                 // tokio::spawn(async move {
-                info!("handling {} command", command.name());
+                info!("handling command: {}", command.name());
                 command.run(ctx, cmd).await;
                 // });
             } else {
-                error!("invalid command passed: {}", command_name)
+                error!("invalid command: {}", command_name)
             }
         }
     }
@@ -45,26 +44,40 @@ impl EventHandler for Handler {
         let activity = ActivityData::playing("o popozão no chão");
         ctx.set_activity(Some(activity));
 
-        let guild_id = GuildId(self.guild_id.parse().unwrap());
-
-        // if let Ok(cmds) = guild_id.get_commands(&ctx.http).await {
-        //     info!("deleting old commands");
-        //     for cmd in cmds {
-        //         guild_id.delete_command(&ctx.http, cmd.id).await.ok();
-        //     }
-        // }
-
-        if let Err(cause) = guild_id
-            .set_commands(
-                &ctx.http,
-                self.commands
-                    .iter()
-                    .map(|c| c.register(CreateCommand::new(c.name())))
-                    .collect(),
-            )
-            .await
-        {
-            panic!("failed to register commands: {cause}")
+        for guild_id in ctx.cache.guilds().iter().copied() {
+            info!("registering commands on guild {guild_id}");
+            if let Err(err) = register_commands(&ctx, guild_id, &self.commands).await {
+                error!("{err:?}")
+            }
         }
     }
+
+    async fn guild_create(&self, ctx: Context, guild: Guild, _is_new: Option<bool>) {
+        if let Err(err) = register_commands(&ctx, guild.id, &self.commands).await {
+            error!("{err:?}")
+        }
+    }
+}
+
+async fn register_commands(
+    ctx: &Context,
+    guild_id: GuildId,
+    commands: &[Arc<dyn Command + Send + Sync + 'static>],
+) -> anyhow::Result<()> {
+    if let Err(cause) = guild_id
+        .set_commands(
+            &ctx.http,
+            commands
+                .iter()
+                .map(|c| c.register(CreateCommand::new(c.name())))
+                .collect(),
+        )
+        .await
+    {
+        return Err(anyhow::anyhow!(
+            "failed to register command on guild {guild_id}: {cause}"
+        ));
+    }
+
+    Ok(())
 }

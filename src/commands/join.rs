@@ -31,10 +31,12 @@ impl super::Command for Join {
                     .name(&ctx.http)
                     .await
                     .unwrap_or(String::from("?"));
+
                 info!(channel_id = channel_id.0, ?channel_name, "joining channel");
+                common::respond(&ctx, &cmd, format!("Entrando em **{channel_name}**")).await;
             }
             Err(e) => {
-                common::respond(&ctx, &cmd, &e).await;
+                common::respond(&ctx, &cmd, e).await;
             }
         }
     }

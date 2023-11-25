@@ -199,16 +199,16 @@ async fn skip(
 
         assert!(end >= start);
 
-        let mut removed_playing = false;
-        for i in start..=end {
+        let remove_range = start..=end;
+        let removed_current = !q.is_empty() && remove_range.contains(&0);
+        for i in remove_range {
             if let Some(track) = q.remove(i) {
-                removed_playing |= i == 0;
                 track.handle().stop().ok();
             }
         }
 
         // play the next music if the one that was playing got removed
-        if !q.is_empty() && removed_playing {
+        if !q.is_empty() && removed_current {
             if let Some(track) = q.get_mut(0) {
                 track.play().ok();
             }

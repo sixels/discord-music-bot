@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serenity::{
-    all::{ChannelId, ReactionType},
+    all::ChannelId,
     async_trait,
     builder::{CreateEmbed, CreateMessage},
     http::Http,
@@ -10,12 +10,6 @@ use serenity::{
 };
 use songbird::{Event, EventContext, EventHandler};
 use tracing::{error, info};
-
-lazy_static::lazy_static! {
-    static ref PREV_SONG_REACTION: ReactionType = ReactionType::Unicode(String::from("⏪"));
-    static ref NEXT_SONG_REACTION: ReactionType = ReactionType::Unicode(String::from("⏩"));
-    static ref PLAYPAUSE_SONG_REACTION: ReactionType = ReactionType::Unicode(String::from("⏯️"));
-}
 
 pub struct PlayingSongNotifier {
     pub channel_id: ChannelId,
@@ -45,39 +39,12 @@ impl EventHandler for PlayingSongNotifier {
                 embed = embed.thumbnail(thumb);
             }
 
-            match self
+            if let Err(cause) = self
                 .channel_id
-                .send_message(
-                    &self.http,
-                    CreateMessage::new().add_embed(embed), // .reactions([
-                                                           //     PREV_SONG_REACTION.clone(),
-                                                           //     PLAYPAUSE_SONG_REACTION.clone(),
-                                                           //     NEXT_SONG_REACTION.clone(),
-                                                           // ]),
-                )
+                .send_message(&self.http, CreateMessage::new().add_embed(embed))
                 .await
             {
-                Ok(_message) => {
-                    // if let Some((_, handler)) = track_list.get(0) {
-                    //     while let Some(reaction) =
-                    //         message.await_reactions(&self.context).next().await
-                    //     {
-                    //         if reaction.emoji == PREV_SONG_REACTION.clone() {
-                    //             info!("playing previous track");
-                    //             break;
-                    //         }
-                    //         if reaction.emoji == NEXT_SONG_REACTION.clone() {
-                    //             info!("playing next track");
-                    //             break;
-                    //         }
-                    //         if reaction.emoji == PLAYPAUSE_SONG_REACTION.clone() {
-                    //             info!("toggling the playing state track");
-                    //             handler.add_event(Event::Track(TrackEvent::Play), action)
-                    //         }
-                    //     }
-                    // }
-                }
-                Err(cause) => error!(%cause, "failed to send message"),
+                error!(%cause, "failed to send message")
             }
         }
 

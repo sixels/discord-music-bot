@@ -1,8 +1,7 @@
 use std::time::Duration;
 
-use serde::Deserialize;
 use serenity::{
-    all::{CommandInteraction, CommandOptionType, ResolvedValue, UserId},
+    all::{CommandInteraction, CommandOptionType, ResolvedValue},
     async_trait,
     builder::{
         CreateButton, CreateCommand, CreateCommandOption, CreateEmbed,
@@ -22,20 +21,8 @@ use crate::{
     commands::{common, join::join_channel},
     events::track::PlayingSongNotifier,
     service::HttpKey,
+    tools::piped::{PipedClient, PipedError},
 };
-
-const PIPED_URL: &str = "https://pipedapi.kavin.rocks";
-
-#[derive(Debug, Deserialize)]
-pub struct SearchResults {
-    items: Vec<SearchResult>,
-}
-#[derive(Debug, Deserialize)]
-pub struct SearchResult {
-    url: String,
-    duration: u64,
-    title: String,
-}
 
 /// Play a song from the given URL
 pub struct Play;
@@ -73,6 +60,25 @@ impl super::Command for Play {
             }
         });
 
+        let guild_id = common::get_guild_id(&ctx, &cmd);
+
+        let manager = songbird::get(&ctx)
+            .await
+            .expect("Songbird Voice client placed in at initialisation.");
+
+        let handler_lock = match manager.get(guild_id) {
+            Some(handler) => handler,
+            None => match join_channel(manager, &ctx, &cmd).await {
+                Ok((handler, _)) => handler,
+                Err(e) => {
+                    common::respond(&ctx, &cmd, &e).await;
+                    return;
+                }
+            },
+        };
+
+        cmd.defer_ephemeral(&ctx.http).await.ok();
+
         let query = match option_query {
             Some(url) => url,
             None => {
@@ -82,8 +88,6 @@ impl super::Command for Play {
         };
         info!(?query, "preparing to play song");
 
-        let guild_id = common::get_guild_id(&ctx, &cmd);
-
         let http = {
             let data = ctx.data.read().await;
             data.get::<HttpKey>()
@@ -92,37 +96,51 @@ impl super::Command for Play {
         };
 
         let mut source = match query {
-            QueryKind::Url(url) => YoutubeDl::new(http, url.to_string()),
+            QueryKind::Url(url) => {
+                if let Err(cause) = cmd.delete_response(&ctx.http).await {
+                    error!(%cause, "failed to delete response")
+                }
+                YoutubeDl::new(http, url.to_string())
+            }
             QueryKind::Search(input) => {
-                cmd.defer_ephemeral(&ctx.http).await.ok();
+                let typemap = ctx.data.read().await;
+                let http_client = typemap
+                    .get::<HttpKey>()
+                    .expect("http client not initialized");
 
-                info!("querying search results");
-                let Ok(res) = http
-                    .get(format!("{}/search", PIPED_URL))
-                    .query(&[
-                        ("q", input),
-                        ("filter", "videos"),
-                        ("filter", "music_songs"),
-                        ("filter", "music_videos"),
-                    ])
-                    .send()
-                    .await
-                else {
-                    common::respond(&ctx, &cmd, "Não consegui pesquisar nenhuma música").await;
-                    return;
-                };
-                // let bytes = res.bytes();
-
-                let Ok(results) = res.json::<SearchResults>().await else {
-                    common::respond(&ctx, &cmd, "deu ruim em alguma coisa, tenta de novo").await;
-                    return;
+                let results = match PipedClient::new(http_client).search_songs(input).await {
+                    Ok(results) => results,
+                    Err(err) => {
+                        match err {
+                            PipedError::Request => {
+                                common::respond(
+                                    &ctx,
+                                    &cmd,
+                                    "Não consegui pesquisar nenhuma música",
+                                )
+                                .await;
+                            }
+                            PipedError::Unknown => {
+                                common::respond(
+                                    &ctx,
+                                    &cmd,
+                                    "deu ruim em alguma coisa, tenta de novo",
+                                )
+                                .await;
+                            }
+                        };
+                        return;
+                    }
                 };
 
                 info!("found {} results", results.items.len());
 
-                let display_result = results
+                let results_size = results.items.len().min(5);
+
+                let result_formats = results
                     .items
                     .iter()
+                    .take(results_size)
                     .enumerate()
                     .map(|(i, result)| {
                         let fmt_duration =
@@ -134,11 +152,11 @@ impl super::Command for Play {
 
                 let mut followup = CreateInteractionResponseFollowup::new().add_embed(
                     CreateEmbed::new()
-                        .field("Resultados", display_result.join("\n"), false)
+                        .field("Resultados", result_formats.join("\n"), false)
                         .colour(Colour::RED),
                 );
 
-                for (i, result) in results.items.iter().enumerate() {
+                for (i, result) in results.items.iter().take(results_size).enumerate() {
                     followup = followup
                         .button(CreateButton::new(result.url.clone()).label((i + 1).to_string()))
                 }
@@ -159,7 +177,7 @@ impl super::Command for Play {
                 let video_uri = format!("https://www.youtube.com/{video_url}");
 
                 if let Err(cause) = cmd.delete_followup(&ctx.http, message.id).await {
-                    error!(%cause, "failed to delete follow up")
+                    error!(%cause, "failed to delete response")
                 }
 
                 YoutubeDl::new(http, video_uri)
@@ -190,31 +208,15 @@ impl super::Command for Play {
             }
         };
 
+        let response_message = format!(
+            "**{}** adicionou ||{}|| à fila",
+            cmd.user.name, song_meta.title,
+        );
         cmd.channel_id
-            .send_message(
-                &ctx.http,
-                CreateMessage::new().content(format!(
-                    "**{}** adicionou ||{}|| à fila",
-                    cmd.user.name, song_meta.title,
-                )),
-            )
+            .send_message(&ctx.http, CreateMessage::new().content(response_message))
             .await
             .ok();
 
-        let manager = songbird::get(&ctx)
-            .await
-            .expect("Songbird Voice client placed in at initialisation.");
-
-        let handler_lock = match manager.get(guild_id) {
-            Some(handler) => handler,
-            None => match join_channel(manager, &ctx, &cmd).await {
-                Ok((handler, _)) => handler,
-                Err(e) => {
-                    common::respond(&ctx, &cmd, &e).await;
-                    return;
-                }
-            },
-        };
         let mut handler = handler_lock.lock().await;
 
         let song = handler.enqueue_input(source.into()).await;
@@ -270,6 +272,7 @@ impl TypeMapKey for SongMetadataKey {
     type Value = SongMetadata;
 }
 
+#[allow(dead_code)]
 mod ytdl {
     use std::{io::ErrorKind, time::Duration};
 

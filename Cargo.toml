@@ -9,15 +9,14 @@ members = ["."]
 exclude = ["dep-install-hack"]
 
 [dependencies]
-shuttle-runtime = "0.28.0"
+shuttle-runtime = "0.34.0"
 anyhow = "1.0.71"
-shuttle-secrets = "0.28.0"
+shuttle-secrets = "0.34.0"
 tokio = { version = "1.28.2", features = ["rt-multi-thread", "sync", "time"] }
 tracing = "0.1.37"
 reqwest = { version = "0.11.18", features = ["json"] }
 
 
-symphonia = { features = ["aac", "mp3", "isomp4", "alac"], version = "0.5.2" }
 lazy_static = "1.1.1"
 regex = "1.9.0"
 humantime = "2.1.0"
@@ -42,3 +41,7 @@ features = [
 git = "https://github.com/serenity-rs/songbird"
 branch = "next"
 features = ["builtin-queue"]
+
+[dependencies.symphonia]
+version = "0.5.2"
+features = ["aac", "mp3", "isomp4", "alac"]
