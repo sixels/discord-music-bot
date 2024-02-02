@@ -30,9 +30,8 @@ impl<'h> PipedClient<'h> {
         let mut url = Url::parse(format!("{}/search", self.instance).as_str()).expect("bad URL");
         url.query_pairs_mut().append_pair("q", input);
         url.query_pairs_mut()
-            .append_pair("filter", "videos")
-            .append_pair("filter", "music_songs")
-            .append_pair("filter", "music_videos");
+            .append_pair("filter", "videos");
+
 
         debug!("search url: {url:?}");
 
