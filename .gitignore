@@ -11,3 +11,4 @@ target/
 *.pdb
 
 Secrets.toml
+.devbox/

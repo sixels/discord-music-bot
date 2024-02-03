@@ -1,0 +1,46 @@
+{
+  "lockfile_version": "1",
+  "packages": {
+    "cargo-binstall@latest": {
+      "last_modified": "2024-01-14T03:55:27Z",
+      "resolved": "github:NixOS/nixpkgs/dd5621df6dcb90122b50da5ec31c411a0de3e538#cargo-binstall",
+      "source": "devbox-search",
+      "version": "1.5.0",
+      "systems": {
+        "aarch64-darwin": {
+          "store_path": "/nix/store/848vip2z5zpx0mkzrw8prw3c0p5jgz7i-cargo-binstall-1.5.0"
+        },
+        "aarch64-linux": {
+          "store_path": "/nix/store/b7l336bc5538ki9id5gyn607dy5ywghq-cargo-binstall-1.5.0"
+        },
+        "x86_64-darwin": {
+          "store_path": "/nix/store/cvixv342w7bqwkr94rkgqj5sl591rkbc-cargo-binstall-1.5.0"
+        },
+        "x86_64-linux": {
+          "store_path": "/nix/store/zmrx16wyw9h2ripilf923nm97hlv3lv9-cargo-binstall-1.5.0"
+        }
+      }
+    },
+    "rustup@latest": {
+      "last_modified": "2024-01-14T03:55:27Z",
+      "plugin_version": "0.0.1",
+      "resolved": "github:NixOS/nixpkgs/dd5621df6dcb90122b50da5ec31c411a0de3e538#rustup",
+      "source": "devbox-search",
+      "version": "1.26.0",
+      "systems": {
+        "aarch64-darwin": {
+          "store_path": "/nix/store/p3f89v1g987851qx9wfyr9niz7g958i8-rustup-1.26.0"
+        },
+        "aarch64-linux": {
+          "store_path": "/nix/store/y4dfxyn4llpbyr47q7f35hpy81a203ap-rustup-1.26.0"
+        },
+        "x86_64-darwin": {
+          "store_path": "/nix/store/xqnrspx2845808xzbnd5xa4063cl6qgi-rustup-1.26.0"
+        },
+        "x86_64-linux": {
+          "store_path": "/nix/store/p0rc60fc68rn6cl4jg8pdrs49r9vfs21-rustup-1.26.0"
+        }
+      }
+    }
+  }
+}
