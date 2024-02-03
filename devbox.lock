@@ -1,23 +1,23 @@
 {
   "lockfile_version": "1",
   "packages": {
-    "cargo-binstall@latest": {
+    "cargo-shuttle@latest": {
       "last_modified": "2024-01-14T03:55:27Z",
-      "resolved": "github:NixOS/nixpkgs/dd5621df6dcb90122b50da5ec31c411a0de3e538#cargo-binstall",
+      "resolved": "github:NixOS/nixpkgs/dd5621df6dcb90122b50da5ec31c411a0de3e538#cargo-shuttle",
       "source": "devbox-search",
-      "version": "1.5.0",
+      "version": "0.34.1",
       "systems": {
         "aarch64-darwin": {
-          "store_path": "/nix/store/848vip2z5zpx0mkzrw8prw3c0p5jgz7i-cargo-binstall-1.5.0"
+          "store_path": "/nix/store/j4fjhq69r7vp0pz12f6bgvp6fvxvzjfg-cargo-shuttle-0.34.1"
         },
         "aarch64-linux": {
-          "store_path": "/nix/store/b7l336bc5538ki9id5gyn607dy5ywghq-cargo-binstall-1.5.0"
+          "store_path": "/nix/store/7lx5pn2n87sdjqabrmf9ss39rhdk707i-cargo-shuttle-0.34.1"
         },
         "x86_64-darwin": {
-          "store_path": "/nix/store/cvixv342w7bqwkr94rkgqj5sl591rkbc-cargo-binstall-1.5.0"
+          "store_path": "/nix/store/sq0ld3khbxa5fpb897yr0z5cfslx8yyg-cargo-shuttle-0.34.1"
         },
         "x86_64-linux": {
-          "store_path": "/nix/store/zmrx16wyw9h2ripilf923nm97hlv3lv9-cargo-binstall-1.5.0"
+          "store_path": "/nix/store/xh6bwpf22mrpsvaw2ssddzlyw3rnrlaw-cargo-shuttle-0.34.1"
         }
       }
     },

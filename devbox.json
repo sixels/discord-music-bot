@@ -1,7 +1,7 @@
 {
   "packages": [
     "rustup@latest",
-    "cargo-binstall@latest"
+    "cargo-shuttle@latest"
   ],
   "shell": {
     "init_hook": [
