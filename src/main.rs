@@ -13,7 +13,7 @@ mod tools;
 type ShuttleResult<T> = Result<T, shuttle_runtime::Error>;
 
 #[shuttle_runtime::main]
-async fn serenity(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> ShuttleResult<Service> {
+async fn serenity(#[shuttle_runtime::Secrets] secret_store: SecretStore) -> ShuttleResult<Service> {
     // Get the discord token set in `Secrets.toml`
     let token = if let Some(token) = secret_store.get("DISCORD_TOKEN") {
         token
