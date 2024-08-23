@@ -1,13 +1,7 @@
 use std::time::Duration;
 
 use serenity::{
-    all::{CommandInteraction, CommandOptionType, ResolvedValue},
-    async_trait,
-    builder::{
-        CreateButton, CreateCommand, CreateCommandOption, CreateEmbed,
-        CreateInteractionResponseFollowup, CreateMessage,
-    },
-    client::Context,
+    builder::{CreateButton, CreateEmbed, CreateInteractionResponseFollowup},
     model::Colour,
     prelude::TypeMapKey,
 };
@@ -18,230 +12,198 @@ use songbird::{
 use tracing::{error, info};
 
 use crate::{
-    commands::{common, join::join_channel},
+    commands::join::join_channel,
     events::track::PlayingSongNotifier,
     service::HttpKey,
     tools::piped::{PipedClient, PipedError},
 };
 
-/// Play a song from the given URL
-pub struct Play;
+use super::{Context, Error};
 
-#[async_trait]
-impl super::Command for Play {
-    fn name(&self) -> String {
-        String::from("play")
-    }
+/// Toca uma música no canal de voz atual
+#[poise::command(slash_command, guild_only)]
+pub async fn play(
+    ctx: Context<'_>,
+    #[description = "URL ou nome da música a ser tocada"] song: String,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().expect("guild id not found");
+    let guild = guild_id.to_guild_cached(&ctx.cache()).unwrap().clone();
 
-    fn register(&self, cmd: CreateCommand) -> CreateCommand {
-        cmd.description("Toca a música que você passar em `query`")
-            .add_option(
-                CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "query",
-                    "A URL de algum vídeo",
-                )
-                .required(true),
-            )
-    }
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("Songbird Voice client placed in at initialisation.")
+        .clone();
 
-    async fn run(&self, ctx: Context, cmd: CommandInteraction) {
-        let options = cmd.data.options();
-        let option_query = common::get_option(&options, "query").and_then(|opt| {
-            if let ResolvedValue::String(val) = opt {
-                let query = if val.starts_with("https://") {
-                    QueryKind::Url(val)
-                } else {
-                    QueryKind::Search(val)
-                };
-                Some(query)
-            } else {
-                None
+    let handler_lock = match manager.get(guild_id) {
+        Some(handler) => handler,
+        None => match join_channel(manager, &ctx, &guild).await {
+            Ok((handler, _)) => handler,
+            Err(cause) => {
+                error!(%cause, "failed to join channel");
+                ctx.reply(cause.to_string()).await?;
+                return Ok(());
             }
-        });
+        },
+    };
 
-        let guild_id = common::get_guild_id(&ctx, &cmd);
+    ctx.defer_ephemeral().await.ok();
 
-        let manager = songbird::get(&ctx)
-            .await
-            .expect("Songbird Voice client placed in at initialisation.");
+    let Ok(query) = QueryKind::try_from(song.as_str()) else {
+        ctx.reply("URL ou nome da música inválidos").await?;
+        return Ok(());
+    };
 
-        let handler_lock = match manager.get(guild_id) {
-            Some(handler) => handler,
-            None => match join_channel(manager, &ctx, &cmd).await {
-                Ok((handler, _)) => handler,
-                Err(e) => {
-                    common::respond(&ctx, &cmd, &e).await;
-                    return;
-                }
-            },
-        };
+    info!(?query, "searching for song");
 
-        cmd.defer_ephemeral(&ctx.http).await.ok();
-
-        let query = match option_query {
-            Some(url) => url,
-            None => {
-                common::respond(&ctx, &cmd, "Você precisa passar uma URL válida para tocar").await;
-                return;
-            }
-        };
-        info!(?query, "preparing to play song");
-
-        let http = {
-            let data = ctx.data.read().await;
-            data.get::<HttpKey>()
-                .cloned()
-                .expect("Guaranteed to exist in the typemap.")
-        };
-
-        let mut source = match query {
-            QueryKind::Url(url) => {
-                if let Err(cause) = cmd.delete_response(&ctx.http).await {
-                    error!(%cause, "failed to delete response")
-                }
-                YoutubeDl::new(http, url.to_string())
-            }
-            QueryKind::Search(input) => {
-                let typemap = ctx.data.read().await;
-                let http_client = typemap
-                    .get::<HttpKey>()
-                    .expect("http client not initialized");
-
-                let results = match PipedClient::new(http_client).search_songs(input).await {
-                    Ok(results) => results,
-                    Err(err) => {
-                        match err {
-                            PipedError::Request => {
-                                common::respond(
-                                    &ctx,
-                                    &cmd,
-                                    "Não consegui pesquisar nenhuma música",
-                                )
-                                .await;
-                            }
-                            PipedError::Unknown => {
-                                common::respond(
-                                    &ctx,
-                                    &cmd,
-                                    "deu ruim em alguma coisa, tenta de novo",
-                                )
-                                .await;
-                            }
-                        };
-                        return;
-                    }
-                };
-
-                info!("found {} results", results.items.len());
-
-                let results_size = results.items.len().min(5);
-
-                let result_formats = results
-                    .items
-                    .iter()
-                    .take(results_size)
-                    .enumerate()
-                    .map(|(i, result)| {
-                        let fmt_duration =
-                            humantime::format_duration(Duration::from_secs(result.duration))
-                                .to_string();
-                        format!("{}. {} ({})", i + 1, result.title, fmt_duration)
-                    })
-                    .collect::<Vec<String>>();
-
-                let mut followup = CreateInteractionResponseFollowup::new().add_embed(
-                    CreateEmbed::new()
-                        .field("Resultados", result_formats.join("\n"), false)
-                        .colour(Colour::RED),
-                );
-
-                for (i, result) in results.items.iter().take(results_size).enumerate() {
-                    followup = followup
-                        .button(CreateButton::new(result.url.clone()).label((i + 1).to_string()))
-                }
-
-                info!("creating follow up message");
-                let Ok(message) = cmd.create_followup(&ctx.http, followup).await else {
-                    common::respond(&ctx, &cmd, "Deu ruim :sob:").await;
-                    return;
-                };
-
-                let Some(response) = message.await_component_interaction(&ctx).await else {
-                    return;
-                };
-
-                let video_url = &response.data.custom_id;
-                info!("user selected {}", video_url);
-
-                let video_uri = format!("https://www.youtube.com/{video_url}");
-
-                if let Err(cause) = cmd.delete_followup(&ctx.http, message.id).await {
-                    error!(%cause, "failed to delete response")
-                }
-
-                YoutubeDl::new(http, video_uri)
-            }
-        };
-
-        let meta = source.aux_metadata().await.ok();
-
-        let requester = cmd
-            .user
-            .global_name
+    let http = {
+        let data = ctx.serenity_context().data.read().await;
+        data.get::<HttpKey>()
+            .expect("http client not found")
             .clone()
-            .unwrap_or(cmd.user.name.clone());
+    };
 
-        let song_meta = if let Some(metadata) = meta {
-            SongMetadata {
-                title: metadata.title.unwrap_or(String::new()),
-                duration: metadata.duration.unwrap_or(Duration::ZERO),
-                thumbnail: metadata.thumbnail,
-                user: requester,
-            }
-        } else {
-            SongMetadata {
-                title: String::from(query),
-                thumbnail: None,
-                duration: Duration::ZERO,
-                user: requester,
-            }
-        };
-
-        let response_message = format!(
-            "**{}** adicionou ||{}|| à fila",
-            cmd.user.name, song_meta.title,
-        );
-        cmd.channel_id
-            .send_message(&ctx.http, CreateMessage::new().content(response_message))
-            .await
-            .ok();
-
-        let mut handler = handler_lock.lock().await;
-
-        let song = handler.enqueue_input(source.into()).await;
-
-        if let Err(cause) = song.add_event(
-            Event::Track(songbird::TrackEvent::Play),
-            PlayingSongNotifier {
-                channel_id: cmd.channel_id,
-                http: ctx.http.clone(),
-                context: ctx.clone(),
-                title: song_meta.title.clone(),
-                username: cmd
-                    .user
-                    .global_name
-                    .clone()
-                    .unwrap_or(cmd.user.name.clone()),
-                thumbnail: song_meta.thumbnail.clone(),
-            },
-        ) {
-            error!(%cause, "failed to create song event")
+    let mut source = match query {
+        QueryKind::Url(url) => {
+            ctx.reply(format!("Adicionando {url} à fila")).await?;
+            YoutubeDl::new(http, url.to_string())
         }
+        QueryKind::Search(search) => {
+            let results = match PipedClient::new(&http).search_songs(search).await {
+                Ok(results) => results,
+                Err(err) => {
+                    match err {
+                        PipedError::Request => {
+                            ctx.reply("Não consegui pesquisar nenhuma música").await?;
+                        }
+                        PipedError::Unknown => {
+                            ctx.reply("Deu ruim :sob:").await?;
+                        }
+                    };
+                    return Ok(());
+                }
+            };
 
-        let mut typemap = song.typemap().write().await;
-        typemap.insert::<SongMetadataKey>(song_meta)
+            info!("found {} results", results.items.len());
+
+            let results_size = results.items.len().min(5);
+
+            let result_formats = results
+                .items
+                .iter()
+                .take(results_size)
+                .enumerate()
+                .map(|(i, result)| {
+                    let fmt_duration =
+                        humantime::format_duration(Duration::from_secs(result.duration))
+                            .to_string();
+                    format!("{}. {} ({})", i + 1, result.title, fmt_duration)
+                })
+                .collect::<Vec<String>>();
+
+            let mut followup = CreateInteractionResponseFollowup::new().add_embed(
+                CreateEmbed::new()
+                    .field("Resultados", result_formats.join("\n"), false)
+                    .colour(Colour::RED),
+            );
+
+            for (i, result) in results.items.iter().take(results_size).enumerate() {
+                followup = followup
+                    .button(CreateButton::new(result.url.clone()).label((i + 1).to_string()))
+            }
+
+            info!("creating follow up message");
+            let poise::Context::Application(ref app_ctx) = ctx else {
+                return Ok(());
+            };
+
+            let Ok(message) = app_ctx
+                .interaction
+                .create_followup(&ctx.http(), followup)
+                .await
+            else {
+                ctx.reply("Deu ruim :sob:").await?;
+                return Ok(());
+            };
+
+            let Some(response) = message.await_component_interaction(&ctx).await else {
+                return Ok(());
+            };
+
+            let video_url = &response.data.custom_id;
+            info!("user selected {}", video_url);
+
+            let video_uri = format!("https://www.youtube.com/{video_url}");
+
+            if let Err(cause) = app_ctx
+                .interaction
+                .delete_followup(&ctx.http(), message.id)
+                .await
+            {
+                error!(%cause, "failed to delete response")
+            }
+
+            YoutubeDl::new(http, video_uri)
+        }
+    };
+
+    let meta = source.aux_metadata().await.ok();
+
+    let requester = ctx
+        .author()
+        .global_name
+        .clone()
+        .unwrap_or(ctx.author().name.clone());
+
+    let song_meta = if let Some(metadata) = meta {
+        SongMetadata {
+            title: metadata.title.unwrap_or(String::new()),
+            duration: metadata.duration.unwrap_or(Duration::ZERO),
+            thumbnail: metadata.thumbnail,
+            user: requester,
+        }
+    } else {
+        SongMetadata {
+            title: String::from(query),
+            thumbnail: None,
+            duration: Duration::ZERO,
+            user: requester,
+        }
+    };
+
+    let response_message = format!(
+        "**{}** adicionou ||{}|| à fila",
+        ctx.author().name,
+        song_meta.title,
+    );
+
+    ctx.reply(response_message).await?;
+
+    let mut handler = handler_lock.lock().await;
+
+    let song = handler.enqueue_input(source.into()).await;
+
+    if let Err(cause) = song.add_event(
+        Event::Track(songbird::TrackEvent::Play),
+        PlayingSongNotifier {
+            channel_id: ctx.channel_id(),
+            http: ctx.serenity_context().http.clone(),
+            context: ctx.serenity_context().clone(),
+            title: song_meta.title.clone(),
+            username: ctx
+                .author()
+                .global_name
+                .clone()
+                .unwrap_or(ctx.author().name.clone()),
+            thumbnail: song_meta.thumbnail.clone(),
+        },
+    ) {
+        error!(%cause, "failed to create song event")
     }
+
+    let mut typemap = song.typemap().write().await;
+    typemap.insert::<SongMetadataKey>(song_meta);
+
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -255,6 +217,23 @@ impl<'s> From<QueryKind<'s>> for String {
         match value {
             QueryKind::Url(s) => String::from(s),
             QueryKind::Search(s) => String::from(s),
+        }
+    }
+}
+
+impl<'s> TryFrom<&'s str> for QueryKind<'s> {
+    type Error = ();
+    fn try_from(value: &'s str) -> Result<Self, Self::Error> {
+        if value.is_empty() {
+            return Err(());
+        }
+        if value.starts_with("http://")
+            || value.starts_with("https://")
+            || value.starts_with("www.")
+        {
+            Ok(QueryKind::Url(value))
+        } else {
+            Ok(QueryKind::Search(value))
         }
     }
 }

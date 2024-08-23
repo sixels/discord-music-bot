@@ -1,89 +1,84 @@
 use std::sync::Arc;
 
-use serenity::{
-    all::{CommandInteraction, CommandOptionType, GuildId},
-    async_trait,
-    builder::{CreateCommand, CreateCommandOption},
-    client::Context,
-};
-
+use serenity::all::GuildId;
 use songbird::Songbird;
 use tracing::error;
 
-use crate::commands::common;
+use super::{Context, Error};
 
-/// Pause the current song
-pub struct Pause;
+/// Pausa a música que está tocando
+#[poise::command(slash_command, guild_only, subcommands("on", "off"))]
+pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().expect("Guild ID is not available");
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("Songbird Voice client placed in at initialisation.");
 
-#[async_trait]
-impl super::Command for Pause {
-    fn name(&self) -> String {
-        String::from("pause")
+    if let Err(err) = pause_song(manager, guild_id, false).await {
+        ctx.reply(err.to_string()).await?;
+    } else {
+        ctx.reply("Música pausada").await?;
     }
 
-    fn register(&self, cmd: CreateCommand) -> CreateCommand {
-        cmd.description("Pausa a música que está tocando")
-            .add_option(
-                CreateCommandOption::new(
-                    CommandOptionType::SubCommand,
-                    "on",
-                    "Pausa a música atual",
-                )
-                .required(false)
-                .set_autocomplete(true),
-            )
-            .add_option(
-                CreateCommandOption::new(
-                    CommandOptionType::SubCommand,
-                    "off",
-                    "Continua a tocar a música de onde parou",
-                )
-                .required(false)
-                .set_autocomplete(true),
-            )
-    }
-
-    async fn run(&self, ctx: Context, cmd: CommandInteraction) {
-        let options = cmd.data.options();
-        let unpause = common::get_option(&options, "off")
-            .map(|_| true)
-            .unwrap_or(false);
-
-        let guild_id = common::get_guild_id(&ctx, &cmd);
-        let manager = songbird::get(&ctx)
-            .await
-            .expect("Songbird Voice client placed in at initialisation.");
-
-        match pause(manager, guild_id, unpause).await {
-            Ok(message) => common::respond(&ctx, &cmd, message),
-            Err(err) => common::respond(&ctx, &cmd, err),
-        }
-        .await;
-    }
+    Ok(())
 }
 
-pub(crate) async fn pause(
+/// Pausa a música que está tocando
+#[poise::command(prefix_command, slash_command)]
+async fn on(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().expect("Guild ID is not available");
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("Songbird Voice client placed in at initialisation.");
+
+    if let Err(err) = pause_song(manager, guild_id, false).await {
+        ctx.reply(err.to_string()).await?;
+    } else {
+        ctx.reply("Música pausada").await?;
+    }
+
+    Ok(())
+}
+
+/// Continua a tocar a música de onde parou
+#[poise::command(prefix_command, slash_command)]
+async fn off(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().expect("Guild ID is not available");
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("Songbird Voice client placed in at initialisation.");
+
+    if let Err(err) = pause_song(manager, guild_id, true).await {
+        ctx.reply(err.to_string()).await?;
+    } else {
+        ctx.reply("Música despausada").await?;
+    }
+
+    Ok(())
+}
+
+pub(super) async fn pause_song(
     manager: Arc<Songbird>,
     guild_id: GuildId,
     unpause: bool,
-) -> Result<String, String> {
+) -> Result<(), anyhow::Error> {
     let handler_lock = match manager.get(guild_id) {
         Some(handler) => handler,
-        None => return Err("Não estou em nenhum canal".to_string()),
+        None => return Err(anyhow::anyhow!("Não estou em nenhum canal")),
     };
     let handler = handler_lock.lock().await;
 
     if unpause {
         if let Err(cause) = handler.queue().resume() {
             error!(%cause, "failed to unpause");
-            return Err("Não consegui despausar".to_string());
+            return Err(anyhow::anyhow!("Não consegui despausar"));
         }
-        Ok("Música despausada".to_string())
+        Ok(())
     } else {
         if let Err(cause) = handler.queue().pause() {
             error!(%cause, "failed to pause");
-            return Err("Não consegui pausar".to_string());
+            return Err(anyhow::anyhow!("Não consegui pausar"));
         }
-        Ok("Música pausada".to_string())
+        Ok(())
     }
 }

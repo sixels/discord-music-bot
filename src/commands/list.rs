@@ -1,94 +1,55 @@
 use std::sync::Arc;
 
-use serenity::{
-    all::{CommandInteraction, CommandOptionType, GuildId, ResolvedValue},
-    async_trait,
-    builder::{
-        CreateCommand, CreateCommandOption, CreateEmbed, CreateInteractionResponse,
-        CreateInteractionResponseMessage,
-    },
-    client::Context,
-    model::Colour,
-};
-
+use poise::{serenity_prelude as serenity, CreateReply};
+use serenity::{all::GuildId, builder::CreateEmbed, model::Colour};
 use songbird::Songbird;
 
-use crate::commands::common;
+use super::{play::SongMetadataKey, Context, Error};
 
-use super::play::SongMetadataKey;
+const TRACK_LIST_SIZE: usize = 10;
 
-/// List the songs in the queue
-pub struct List;
+/// Lista as músicas na fila de reprodução
+#[poise::command(slash_command, guild_only)]
+pub async fn list(
+    ctx: Context<'_>,
+    #[description = "Escolhe a página da lista"] option_page: Option<String>,
+) -> Result<(), Error> {
+    let option_page = option_page
+        .and_then(|page| page.parse::<usize>().ok())
+        .unwrap_or(1);
 
-#[async_trait]
-impl super::Command for List {
-    fn name(&self) -> String {
-        String::from("list")
-    }
+    let guild_id = ctx.guild_id().ok_or(anyhow::anyhow!("Not in a guild"))?;
+    let manager = songbird::get(&ctx.serenity_context())
+        .await
+        .expect("Songbird Voice client placed in at initialisation.");
 
-    fn register(&self, cmd: CreateCommand) -> CreateCommand {
-        cmd.description("Lista as músicas que estão na fila")
-            .add_option(
-                CreateCommandOption::new(
-                    CommandOptionType::Integer,
-                    "page",
-                    "Mostra outra página da lista",
+    match show_list(manager, guild_id, option_page - 1).await {
+        Ok(message) => {
+            let response = CreateReply::default()
+                .embed(
+                    CreateEmbed::new()
+                        .field("LISTA DE REPRODUÇÃO ATUAL", message, false)
+                        .colour(Colour::BLUE),
                 )
-                .min_int_value(1)
-                .required(false)
-                .set_autocomplete(false),
-            )
-    }
+                .ephemeral(true);
+            let _ = ctx.send(response).await;
 
-    async fn run(&self, ctx: Context, cmd: CommandInteraction) {
-        let options = cmd.data.options();
-        let option_page = common::get_option(&options, "page")
-            .and_then(|val| {
-                if let ResolvedValue::Integer(page) = val {
-                    Some((*page) as usize)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(1);
-
-        let guild_id = common::get_guild_id(&ctx, &cmd);
-        let manager = songbird::get(&ctx)
-            .await
-            .expect("Songbird Voice client placed in at initialisation.");
-
-        match list(manager, guild_id, option_page - 1).await {
-            Ok(message) => {
-                let _ = cmd
-                    .create_response(
-                        &ctx.http,
-                        CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                                .add_embed(
-                                    CreateEmbed::new()
-                                        .field("LISTA DE REPRODUÇÃO ATUAL", message, false)
-                                        .colour(Colour::BLUE),
-                                )
-                                .ephemeral(true),
-                        ),
-                    )
-                    .await
-                    .ok();
-            }
-            Err(err) => common::respond(&ctx, &cmd, err).await,
+            Ok(())
+        }
+        Err(err) => {
+            ctx.reply(err.to_string()).await?;
+            Ok(())
         }
     }
 }
 
-const TRACK_LIST_SIZE: usize = 10;
-
-pub(crate) async fn list(
+pub(super) async fn show_list(
     manager: Arc<Songbird>,
     guild_id: GuildId,
     page: usize,
 ) -> Result<String, String> {
-    let Some(handler_lock) =  manager.get(guild_id) else {
-        return Err("Não estou em nenhum canal".to_string())
+    let Some(handler_lock) = manager.get(guild_id) else {
+        return Err("Não estou em nenhum canal".to_string());
     };
 
     let handler = handler_lock.lock().await;

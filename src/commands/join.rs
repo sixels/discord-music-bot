@@ -1,69 +1,74 @@
 use std::sync::Arc;
 
 use serenity::all::ChannelId;
-use serenity::{all::CommandInteraction, async_trait, builder::CreateCommand, client::Context};
+use serenity::model::guild::Guild;
 use songbird::{Call, Songbird};
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
-use super::common;
+use super::{Context, Error};
 
-/// Join your current voice channel
-pub struct Join;
+/// Entra no canal de voz que você está
+#[poise::command(slash_command, guild_only)]
+pub async fn join(ctx: Context<'_>) -> Result<(), Error> {
+    let guild = ctx
+        .guild()
+        .ok_or(anyhow::anyhow!("Not in a guild"))?
+        .clone();
 
-#[async_trait]
-impl super::Command for Join {
-    fn name(&self) -> String {
-        String::from("join")
-    }
-    fn register(&self, cmd: CreateCommand) -> CreateCommand {
-        cmd.description("Entra no canal de voz que você está")
-    }
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or(anyhow::anyhow!("Songbird Voice client not found"))?;
 
-    async fn run(&self, ctx: Context, cmd: CommandInteraction) {
-        let manager = songbird::get(&ctx)
-            .await
-            .expect("Songbird Voice client placed in at initialisation.");
+    match join_channel(manager, &ctx, &guild).await {
+        Ok((_, channel_id)) => {
+            let channel_name = channel_id
+                .name(&ctx.http())
+                .await
+                .unwrap_or(String::from("?"));
 
-        match join_channel(manager, &ctx, &cmd).await {
-            Ok((_, channel_id)) => {
-                let channel_name = channel_id
-                    .name(&ctx.http)
-                    .await
-                    .unwrap_or(String::from("?"));
-
-                info!(channel_id = channel_id.0, ?channel_name, "joining channel");
-                common::respond(&ctx, &cmd, format!("Entrando em **{channel_name}**")).await;
-            }
-            Err(e) => {
-                common::respond(&ctx, &cmd, e).await;
-            }
+            info!(
+                channel_id = channel_id.get(),
+                ?channel_name,
+                "joining channel"
+            );
+            ctx.reply(format!("Entrando em **{channel_name}**")).await?;
         }
-    }
+        Err(e) => {
+            ctx.reply(e.to_string()).await?;
+        }
+    };
+
+    Ok(())
 }
 
-pub async fn join_channel(
+pub(super) async fn join_channel(
     manager: Arc<Songbird>,
-    ctx: &Context,
-    cmd: &CommandInteraction,
-) -> Result<(Arc<Mutex<Call>>, ChannelId), String> {
-    let (guild_id, channel_id) = common::get_guild_and_channel(ctx, cmd);
+    ctx: &Context<'_>,
+    guild: &Guild,
+) -> Result<(Arc<Mutex<Call>>, ChannelId), Error> {
+    let user_voice_channel = guild
+        .voice_states
+        .get(&ctx.author().id)
+        .and_then(|voice_state| voice_state.channel_id);
 
-    let connect_to = match channel_id {
+    let connect_to = match user_voice_channel {
         Some(channel) => channel,
         None => {
             // check_msg(cmd.reply(ctx, "Not in a voice channel").await);
             error!("not in a voice channel");
-            return Err(
-                "Você deve entrar em um canal de voz antes de usar esse comando".to_string(),
-            );
+            return Err(anyhow::anyhow!(
+                "Você deve entrar em um canal de voz antes de usar esse comando"
+            ));
         }
     };
 
-    manager.join(guild_id, connect_to).await.map_or_else(
+    manager.join(guild.id, connect_to).await.map_or_else(
         |cause| {
             error!(%cause, "failed to join channel");
-            Err("Não consegui entrar no canal. Tente novamente mais tarde".to_string())
+            Err(anyhow::anyhow!(
+                "Não consegui entrar no canal. Tente novamente mais tarde".to_string()
+            ))
         },
         |handler| Ok((handler, connect_to)),
     )

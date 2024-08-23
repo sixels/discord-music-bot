@@ -1,23 +1,17 @@
-use std::sync::Arc;
-
+use poise::Command;
 use reqwest::Client as HttpClient;
 use serenity::{
-    async_trait,
-    framework::StandardFramework,
     prelude::{GatewayIntents, TypeMapKey},
     Client as SerenityClient,
 };
+use shuttle_serenity::SerenityService;
 use songbird::SerenityInit;
 
-use crate::{commands::Command, events::handler::Handler};
-
-pub struct Service {
-    serenity: SerenityClient,
-}
+use crate::commands;
 
 pub struct CreateService {
     token: String,
-    commands: Vec<Arc<dyn Command + Sync + Send + 'static>>,
+    commands: Vec<Command<(), commands::Error>>,
 }
 
 impl CreateService {
@@ -28,40 +22,35 @@ impl CreateService {
         }
     }
 
-    pub fn with_command<C: Command + Sync + Send + 'static>(mut self, cmd: C) -> Self {
-        self.commands.push(Arc::new(cmd));
+    pub fn with_command(mut self, cmd: Command<(), commands::Error>) -> Self {
+        self.commands.push(cmd);
         self
     }
 
-    pub async fn create(self) -> Service {
-        let framework: StandardFramework = StandardFramework::new();
+    pub async fn build(self) -> SerenityService {
+        let framework: poise::Framework<(), anyhow::Error> = poise::Framework::builder()
+            .options(poise::FrameworkOptions {
+                commands: self.commands,
+                ..Default::default()
+            })
+            .setup(|ctx, _, framework| {
+                Box::pin(async move {
+                    poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+                    Ok(())
+                })
+            })
+            .build();
+
         let intents = GatewayIntents::non_privileged();
 
-        let handler = Handler {
-            commands: self.commands,
-        };
         let client = SerenityClient::builder(&self.token, intents)
-            .event_handler(handler)
             .framework(framework)
             .register_songbird()
             .type_map_insert::<HttpKey>(HttpClient::new())
             .await
             .expect("Err creating client");
 
-        Service { serenity: client }
-    }
-}
-
-#[async_trait]
-impl shuttle_runtime::Service for Service {
-    async fn bind(mut self, _addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        self.serenity
-            .start()
-            .await
-            .map_err(shuttle_runtime::CustomError::new)
-            .expect("failed to start the bot");
-
-        Ok(())
+        client.into()
     }
 }
 
