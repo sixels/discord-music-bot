@@ -26,6 +26,7 @@ pub async fn play(
     ctx: Context<'_>,
     #[description = "URL ou nome da música a ser tocada"] song: String,
 ) -> Result<(), Error> {
+    println!("play command");
     let guild_id = ctx.guild_id().expect("guild id not found");
     let guild = guild_id.to_guild_cached(&ctx.cache()).unwrap().clone();
 
@@ -46,7 +47,7 @@ pub async fn play(
         },
     };
 
-    ctx.defer_ephemeral().await.ok();
+    ctx.defer_ephemeral().await?;
 
     let Ok(query) = QueryKind::try_from(song.as_str()) else {
         ctx.reply("URL ou nome da música inválidos").await?;
@@ -63,10 +64,7 @@ pub async fn play(
     };
 
     let mut source = match query {
-        QueryKind::Url(url) => {
-            ctx.reply(format!("Adicionando {url} à fila")).await?;
-            YoutubeDl::new(http, url.to_string())
-        }
+        QueryKind::Url(url) => YoutubeDl::new_ytdl_like("/usr/bin/yt-dlp", http, url.to_string()),
         QueryKind::Search(search) => {
             let results = match PipedClient::new(&http).search_songs(search).await {
                 Ok(results) => results,
@@ -146,7 +144,11 @@ pub async fn play(
         }
     };
 
+    // let _ = source.create_async().await.unwrap();
+
     let meta = source.aux_metadata().await.ok();
+
+    dbg!(&meta);
 
     let requester = ctx
         .author()
@@ -170,13 +172,12 @@ pub async fn play(
         }
     };
 
-    let response_message = format!(
-        "**{}** adicionou ||{}|| à fila",
-        ctx.author().name,
-        song_meta.title,
-    );
-
-    ctx.reply(response_message).await?;
+    ctx.send(
+        poise::CreateReply::default()
+            .content(format!("Adicionando ||{}|| à fila", song_meta.title))
+            .ephemeral(false),
+    )
+    .await?;
 
     let mut handler = handler_lock.lock().await;
 
@@ -240,6 +241,7 @@ impl<'s> TryFrom<&'s str> for QueryKind<'s> {
 
 pub struct SongMetadataKey;
 
+#[allow(dead_code)]
 pub struct SongMetadata {
     pub title: String,
     pub duration: Duration,
@@ -249,75 +251,4 @@ pub struct SongMetadata {
 
 impl TypeMapKey for SongMetadataKey {
     type Value = SongMetadata;
-}
-
-#[allow(dead_code)]
-mod ytdl {
-    use std::{io::ErrorKind, time::Duration};
-
-    use songbird::input::AudioStreamError;
-    use tokio::process::Command;
-
-    const YOUTUBE_DL_COMMAND: &str = "yt-dlp";
-
-    pub struct YtDl {
-        program: &'static str,
-    }
-
-    impl YtDl {
-        pub fn new() -> Self {
-            Self {
-                program: YOUTUBE_DL_COMMAND,
-            }
-        }
-        pub async fn search(&self, query: &str) -> anyhow::Result<Vec<Metadata>> {
-            let ytdl_args = [
-                &format!("ytsearch5:'{query}'"),
-                "-f",
-                "ba[abr>0][vcodec=none]/best",
-                "--no-playlist",
-                "--print",
-                "title,id,duration",
-                "--flat-playlist",
-            ];
-
-            let out = Command::new(self.program)
-                .args(ytdl_args)
-                .output()
-                .await
-                .map_err(|e| {
-                    AudioStreamError::Fail(if e.kind() == ErrorKind::NotFound {
-                        format!("could not find executable '{}' on path", self.program).into()
-                    } else {
-                        Box::new(e)
-                    })
-                })?;
-
-            let stdout = String::from_utf8(out.stdout)?;
-            let lines: Vec<&str> = stdout.lines().collect();
-
-            let results: Vec<Metadata> = lines
-                .chunks_exact(3)
-                .map(|meta| {
-                    let duration: Option<Duration> = String::from(meta[2])
-                        .parse::<f64>()
-                        .ok()
-                        .map(Duration::from_secs_f64);
-
-                    Metadata {
-                        title: String::from(meta[0]),
-                        id: String::from(meta[1]),
-                        duration,
-                    }
-                })
-                .collect();
-
-            Ok(results)
-        }
-    }
-    pub struct Metadata {
-        pub title: String,
-        pub id: String,
-        pub duration: Option<Duration>,
-    }
 }

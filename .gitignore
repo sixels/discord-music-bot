@@ -12,3 +12,5 @@ target/
 
 Secrets.toml
 .devbox/
+
+assets/yt-dlp
